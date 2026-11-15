@@ -173,7 +173,7 @@ function MainLayout() {
           {activeTab === 'dashboard' && <ExecutiveDashboardView onNavigateTab={setActiveTab} />}
           {activeTab === 'skills' && <SkillIntelligenceView />}
           {activeTab === 'regions' && <RegionalAnalysisView />}
-          {activeTab === 'jobs' && <JobExplorerView />}
+          {activeTab === 'jobs' && <JobExplorerView onNavigateTab={setActiveTab} />}
           {activeTab === 'ai-lab' && <AILabStudioView />}
           {activeTab === 'etl' && <ETLPipelineMonitorView />}
         </ViewErrorBoundary>

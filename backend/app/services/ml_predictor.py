@@ -1,31 +1,71 @@
 """
 Module Mô hình Học máy (Machine Learning) phân tích & dự báo nhu cầu kỹ năng và mức lương
 (Chương 2.4 & Chương 3.2 Đề cương Đồ án)
-Sử dụng thư viện: NumPy, Pandas, Scikit-learn (RandomForestRegressor, LinearRegression)
+Sử dụng thư viện: NumPy, Pandas, Scikit-learn (RandomForestRegressor 5-Fold CV, LinearRegression + Smoothing)
 """
+from pathlib import Path
 from typing import List, Dict, Any
+import joblib
 import numpy as np
 import pandas as pd
+import sklearn
 from sklearn.ensemble import RandomForestRegressor
 from sklearn.linear_model import LinearRegression
+from sklearn.metrics import mean_absolute_error
+from sklearn.model_selection import KFold, cross_val_predict, cross_val_score
 from sqlalchemy.orm import Session
 from ..models import JobPosting, SkillESCO, Industry, Location
 from ..seed_data import ROLE_ARCHETYPES
 
+MODEL_CACHE_PATH = (
+    Path(__file__).resolve().parents[1]
+    / "models_cache"
+    / f"rf_salary_v2_sk{sklearn.__version__}.joblib"
+)
+
 
 class LaborMarketMLEngine:
     def __init__(self):
-        self.salary_model = RandomForestRegressor(n_estimators=80, max_depth=10, random_state=42)
+        self.salary_model = RandomForestRegressor(
+            n_estimators=80,
+            max_depth=5,
+            min_samples_leaf=8,
+            random_state=42,
+        )
         self.is_trained = False
         self.title_list: List[str] = []
         self.location_list: List[str] = []
         self.industry_list: List[str] = []
         self.skill_premium_map: Dict[str, float] = {}
-        self.r2_score_val: float = 0.894
+        self.r2_score_val: float = 0.892
+        self.mae_score_val: float = 1.42
+        self.cached_sample_count: int = 0
 
     def fit_if_needed(self, db: Session):
-        if self.is_trained:
+        current_count = db.query(JobPosting).count()
+        if self.is_trained and self.cached_sample_count == current_count:
             return
+
+        # Kiểm tra bộ nhớ đệm mô hình đã huấn luyện (.joblib) để khởi động tức thì trong RAM
+        if MODEL_CACHE_PATH.exists() and current_count >= 20:
+            try:
+                bundle = joblib.load(MODEL_CACHE_PATH)
+                if (
+                    bundle.get("sample_count") == current_count
+                    and bundle.get("sklearn_version") == sklearn.__version__
+                ):
+                    self.salary_model = bundle["salary_model"]
+                    self.title_list = bundle["title_list"]
+                    self.location_list = bundle["location_list"]
+                    self.industry_list = bundle["industry_list"]
+                    self.skill_premium_map = bundle["skill_premium_map"]
+                    self.r2_score_val = bundle["r2_score_val"]
+                    self.mae_score_val = bundle["mae_score_val"]
+                    self.cached_sample_count = current_count
+                    self.is_trained = True
+                    return
+            except Exception:
+                pass
 
         jobs = db.query(JobPosting).all()
         skills = db.query(SkillESCO).all()
@@ -64,9 +104,37 @@ class LaborMarketMLEngine:
 
         X_arr = np.array(rows, dtype=float)
         y_arr = np.array(y, dtype=float)
+
+        # Đánh giá khách quan bằng 5-Fold Cross Validation (R² & MAE) tránh overfitting
+        kf = KFold(n_splits=5, shuffle=True, random_state=42)
+        cv_scores = cross_val_score(self.salary_model, X_arr, y_arr, cv=kf, scoring="r2")
+        oof_preds = cross_val_predict(self.salary_model, X_arr, y_arr, cv=kf)
+        self.r2_score_val = round(float(np.mean(cv_scores)), 3)
+        self.mae_score_val = round(float(mean_absolute_error(y_arr, oof_preds)), 2)
+
         self.salary_model.fit(X_arr, y_arr)
-        self.r2_score_val = round(float(self.salary_model.score(X_arr, y_arr)), 3)
+        self.cached_sample_count = len(jobs)
         self.is_trained = True
+
+        try:
+            MODEL_CACHE_PATH.parent.mkdir(parents=True, exist_ok=True)
+            joblib.dump(
+                {
+                    "sample_count": len(jobs),
+                    "sklearn_version": sklearn.__version__,
+                    "salary_model": self.salary_model,
+                    "title_list": self.title_list,
+                    "location_list": self.location_list,
+                    "industry_list": self.industry_list,
+                    "skill_premium_map": self.skill_premium_map,
+                    "r2_score_val": self.r2_score_val,
+                    "mae_score_val": self.mae_score_val,
+                },
+                MODEL_CACHE_PATH,
+                compress=3,
+            )
+        except Exception:
+            pass
 
     def predict_salary(
         self,
@@ -161,8 +229,10 @@ class LaborMarketMLEngine:
                 "p90_top_tier": p90,
             },
             "model_metadata": {
-                "algorithm": "Scikit-learn RandomForestRegressor (80 Trees) + XAI Feature Attribution",
+                "algorithm": "Scikit-learn RandomForestRegressor (80 Trees, 5-Fold CV) + XAI Feature Attribution",
                 "r2_accuracy_score": self.r2_score_val,
+                "mae_vnd": self.mae_score_val,
+                "validation_method": "5-Fold Cross-Validation",
                 "training_samples": db.query(JobPosting).count()
             },
             "skill_contributions": skill_contributions,
@@ -171,17 +241,33 @@ class LaborMarketMLEngine:
 
     def forecast_demand_series(self, monthly_counts: List[Dict[str, Any]], horizon_months: int = 4) -> List[Dict[str, Any]]:
         """
-        Sử dụng LinearRegression của scikit-learn để dự báo nhu cầu tuyển dụng 4 tháng tiếp theo
+        Sử dụng Holt Double Exponential Smoothing kết hợp LinearRegression để dự báo 4 tháng mượt & kháng nhiễu ngoại lai.
         """
         if not monthly_counts:
             return []
 
         n = len(monthly_counts)
         X = np.arange(n).reshape(-1, 1)
-        y = np.array([m["job_count"] for m in monthly_counts], dtype=float)
+        raw_y = np.array([m["job_count"] for m in monthly_counts], dtype=float)
         sal_y = np.array([m["avg_salary"] for m in monthly_counts], dtype=float)
 
-        reg_jobs = LinearRegression().fit(X, y)
+        # Kháng ngoại lai nhẹ ở điểm cuối chuỗi (Winsorize-blend nếu biến động > 35% so với trung vị 4 tháng trước)
+        y_clean = raw_y.copy()
+        if n >= 4:
+            recent_med = float(np.median(raw_y[-4:-1]))
+            if raw_y[-1] > recent_med * 1.35:
+                y_clean[-1] = recent_med * 1.18
+
+        # Holt Double Exponential Smoothing
+        level = float(y_clean[0])
+        trend = float(y_clean[1] - y_clean[0]) if n > 1 else 2.0
+        alpha, beta = 0.45, 0.25
+        for val in y_clean[1:]:
+            prev_level = level
+            level = alpha * float(val) + (1.0 - alpha) * (level + trend)
+            trend = beta * (level - prev_level) + (1.0 - beta) * trend
+
+        reg_jobs = LinearRegression().fit(X, y_clean)
         reg_sal = LinearRegression().fit(X, sal_y)
 
         future_labels = ["2026-11 (Dự báo)", "2026-12 (Dự báo)", "2027-01 (Dự báo)", "2027-02 (Dự báo)"]
@@ -190,17 +276,24 @@ class LaborMarketMLEngine:
             result.append({
                 **item,
                 "is_forecast": False,
-                "forecast_job_count": item["job_count"]
+                "forecast_job_count": item["job_count"],
+                "confidence_low": item["job_count"],
+                "confidence_high": item["job_count"],
             })
 
         for i in range(horizon_months):
             idx = np.array([[n + i]])
-            pred_cnt = int(max(40, round(float(reg_jobs.predict(idx)[0]))))
+            lin_cnt = float(reg_jobs.predict(idx)[0])
+            holt_cnt = level + (i + 1) * trend
+            blended_cnt = 0.6 * holt_cnt + 0.4 * lin_cnt
+            pred_cnt = int(max(40, round(blended_cnt)))
             pred_sal = round(float(reg_sal.predict(idx)[0]), 1)
             result.append({
                 "month": future_labels[i] if i < len(future_labels) else f"T+{i+1}",
                 "job_count": None,
                 "forecast_job_count": pred_cnt,
+                "confidence_low": int(max(35, round(pred_cnt * 0.92))),
+                "confidence_high": int(round(pred_cnt * 1.08)),
                 "avg_salary": pred_sal,
                 "is_forecast": True
             })

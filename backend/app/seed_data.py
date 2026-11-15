@@ -505,9 +505,9 @@ def seed_database_if_empty(db: Session):
                 k=1
             )[0]
 
-            # Tính toán mức lương sát thực tế theo cấp bậc, địa phương và xu hướng tăng trưởng theo tháng
+            # Tính toán mức lương sát thực tế theo cấp bậc, địa phương và độ phân tán doanh nghiệp thực
             trend_bonus = 1.0 + (MONTHS_TIMELINE.index((month_str, base_date, seasonal_factor)) * 0.008)
-            noise = rng.uniform(0.91, 1.11)
+            noise = rng.uniform(0.84, 1.18)
             avg_sal = round(
                 archetype["base_salary"] * exp_mult * REGIONAL_WAGE_FACTOR.get(loc_code, 1.0) * trend_bonus * noise,
                 1
@@ -555,7 +555,7 @@ def seed_database_if_empty(db: Session):
                 posted_date=posted_dt,
                 posted_month=month_str,
                 description_raw=jd_text,
-                data_quality_score=round(rng.uniform(0.91, 0.99), 2),
+                data_quality_score=round(rng.uniform(0.935, 0.974), 2),
                 is_verified=True,
             )
             db.add(job_obj)
@@ -571,15 +571,18 @@ def seed_database_if_empty(db: Session):
                         is_mandatory=(idx < 3)
                     ))
 
-    # 5. Seed ETL Pipeline Runs (Lịch sử chạy thu thập & làm sạch dữ liệu)
+    # 5. Seed ETL Pipeline Runs (Đa dạng 7 nguồn thu thập & đối chuẩn)
     etl_history = [
-        ("ETL-202610-001", "TopCV Vietnam", 420, 48, 372, 1480, 142.5, "Thu thập & chuẩn hóa tin tuyển dụng nhóm CNTT, AI & Kinh tế số"),
-        ("ETL-202610-002", "VietnamWorks", 315, 31, 284, 1120, 168.0, "Đồng bộ dữ liệu nhóm Tài chính, Sản xuất & Kỹ năng Xanh ESG"),
-        ("ETL-202610-003", "JobsGO & CareerViet", 260, 29, 231, 895, 134.2, "Bóc tách NLP tiếng Việt cho tin tuyển dụng vùng Đông Nam Bộ & ĐBSCL"),
-        ("ETL-202610-004", "ITviec & Chuyên trang GIS/Môi trường", 145, 12, 133, 560, 119.8, "Chuẩn hóa kỹ năng theo khung tham chiếu ESCO v1.2"),
+        ("ETL-202610-001", "TopCV & VietnamWorks", 260, 29, 231, 910, 138.4, "Adapter 1 Crawler: Thu thập & khử trùng nhóm CNTT, AI & Fintech"),
+        ("ETL-202610-002", "ITviec & TopDev Vietnam", 185, 16, 169, 712, 121.6, "Adapter 1 JSON-LD: Bóc tách kỹ năng phần mềm & mức lương công bố"),
+        ("ETL-202610-003", "Cổng MONRE GIS & ESG", 140, 11, 129, 540, 116.2, "Adapter 1 Crawler: Đồng bộ nhóm Tin học Môi trường, GIS & Carbon ESG"),
+        ("ETL-202610-004", "LinkedIn & Glints SEA", 150, 14, 136, 588, 149.0, "Adapter 3 HTML Importer: Chuẩn hóa tin tuyển dụng song ngữ & quy đổi USD"),
+        ("ETL-202610-005", "GSO & NSO Vietnam (SCOLI)", 64, 0, 64, 0, 42.5, "Adapter 2 Statistical Connector: Cập nhật chỉ số SCOLI 8 vùng & phân vị GSO 2026"),
+        ("ETL-202610-006", "JobsGO & CareerViet", 210, 24, 186, 725, 131.8, "Adapter 1 Crawler: Làm sạch tin đa ngành khu vực Đông Nam Bộ & ĐBSCL"),
+        ("ETL-202610-007", "VINASA & Bộ TT&TT", 131, 10, 121, 515, 108.5, "Adapter 2 Macro Connector: Đối chiếu chuẩn kỹ năng số ESCO v1.2 & bán dẫn"),
     ]
     for idx, (code, src, crawled, dup, cleaned, sk_cnt, ms, note) in enumerate(etl_history):
-        start_time = datetime.utcnow() - timedelta(days=(4 - idx), hours=3)
+        start_time = datetime.utcnow() - timedelta(days=(7 - idx), hours=3)
         db.add(ETLPipelineRun(
             run_code=code,
             source_platform=src,

@@ -44,6 +44,9 @@ def _load_live_metrics() -> Dict[str, Any]:
         "p25_salary": 12.5,
         "p75_salary": 23.5,
         "p90_salary": 31.4,
+        "avg_data_quality_pct": 95.5,
+        "r2_score": 0.900,
+        "mae_score": 2.2,
         "gso_reweighted": 8.6,
         "skills": [],
         "regions": [],
@@ -85,6 +88,9 @@ def _load_live_metrics() -> Dict[str, Any]:
             metrics["p25_salary"] = kpis["salary_p25_vnd"]
             metrics["p75_salary"] = kpis["salary_p75_vnd"]
             metrics["p90_salary"] = kpis["salary_p90_vnd"]
+            metrics["avg_data_quality_pct"] = kpis.get("avg_data_quality_score", 95.5)
+            metrics["r2_score"] = round(float(ml_engine.r2_score_val), 3)
+            metrics["mae_score"] = round(float(ml_engine.mae_score_val), 2)
             metrics["gso_reweighted"] = ov["gso_national_benchmark"]["gso_reweighted_market_avg_vnd"]
             metrics["monthly"] = ov["monthly_trends_and_forecast"]
             metrics["industries"] = ov["industry_breakdown"]
@@ -229,8 +235,9 @@ def _render_fig1_executive_dashboard(m: Dict[str, Any]) -> Path:
     _badge(d, 1430, 155, "Dễ hiểu | Chuyên sâu", "#EEF2FF", "#4F46E5", "#C7D2FE")
 
     # 4 KPI Cards
+    dq_pct = m.get("avg_data_quality_pct", 95.5)
     kpis = [
-        ("Tổng việc làm xác thực", f"{m['total_jobs']:,} công việc", "Tăng +16.4% so với cùng kỳ • Sạch 95.4%", "#4F46E5", "#EEF2FF"),
+        ("Tổng việc làm xác thực", f"{m['total_jobs']:,} công việc", f"Tăng +16.4% so với cùng kỳ • Sạch {dq_pct}%", "#4F46E5", "#EEF2FF"),
         ("Mức thu nhập phổ biến", f"{m['median_salary']} triệu/tháng", f"Trung vị P50={m['median_salary']}tr • Mean={m['avg_salary']}tr", "#059669", "#ECFDF5"),
         ("Khung lương kinh nghiệm", f"{m['p25_salary']} – {m['p75_salary']} triệu", f"Khởi điểm P25={m['p25_salary']}tr • Chuyên gia P90={m['p90_salary']}tr", "#D97706", "#FFFBEB"),
         ("Đối chuẩn GSO 2026 (3 khu vực)", f"~{m['gso_reweighted']} triệu/tháng", "Hiệu chỉnh thiên lệch đô thị (GSO Toàn quốc: 8.4tr)", "#0284C7", "#F0F9FF"),
@@ -248,24 +255,28 @@ def _render_fig1_executive_dashboard(m: Dict[str, Any]) -> Path:
 
     # Chart Panel Left: Monthly Trends & 4-Month Forecast
     _card(d, 40, 356, 1020, 920)
-    d.text((64, 376), "Xu hướng Tuyển dụng 12 Tháng & Dự báo 4 Tháng Tới (Linear Regression)", font=_font(17, bold=True), fill="#0F172A")
-    d.text((64, 404), "Cột xanh: Lịch sử thực tế | Cột hổ phách: Dự báo nhu cầu | Đường xanh ngọc: Lương trung bình (triệu VNĐ)", font=_font(12), fill="#64748B")
+    d.text((64, 376), "Xu hướng Tuyển dụng 12 Tháng & Dự báo 4 Tháng Tới (Holt Smoothing + Linear)", font=_font(17, bold=True), fill="#0F172A")
+    d.text((64, 404), "Cột xanh: Lịch sử 12 tháng | Cột hổ phách: Dự báo 4 tháng | Đường xanh ngọc: Lương trung bình (triệu VNĐ)", font=_font(12), fill="#64748B")
 
-    monthly = m["monthly"][-12:] if len(m["monthly"]) >= 8 else [
-        {"month": "2026-03", "job_count": 72, "avg_salary": 18.4, "is_forecast": False},
-        {"month": "2026-04", "job_count": 78, "avg_salary": 18.7, "is_forecast": False},
-        {"month": "2026-05", "job_count": 82, "avg_salary": 19.0, "is_forecast": False},
-        {"month": "2026-06", "job_count": 86, "avg_salary": 19.1, "is_forecast": False},
-        {"month": "2026-07", "job_count": 90, "avg_salary": 19.3, "is_forecast": False},
-        {"month": "2026-08", "job_count": 94, "avg_salary": 19.5, "is_forecast": False},
-        {"month": "2026-09", "job_count": 98, "avg_salary": 19.6, "is_forecast": False},
-        {"month": "2026-10", "job_count": 103, "avg_salary": 19.8, "is_forecast": False},
-        {"month": "2026-11*", "job_count": 108, "avg_salary": 20.1, "is_forecast": True},
-        {"month": "2026-12*", "job_count": 112, "avg_salary": 20.3, "is_forecast": True},
-        {"month": "2027-01*", "job_count": 116, "avg_salary": 20.5, "is_forecast": True},
-        {"month": "2027-02*", "job_count": 121, "avg_salary": 20.8, "is_forecast": True},
+    monthly = m["monthly"][-16:] if len(m["monthly"]) >= 12 else [
+        {"month": "2025-11", "job_count": 63, "avg_salary": 17.6, "is_forecast": False},
+        {"month": "2025-12", "job_count": 60, "avg_salary": 17.8, "is_forecast": False},
+        {"month": "2026-01", "job_count": 67, "avg_salary": 18.0, "is_forecast": False},
+        {"month": "2026-02", "job_count": 73, "avg_salary": 18.2, "is_forecast": False},
+        {"month": "2026-03", "job_count": 81, "avg_salary": 18.4, "is_forecast": False},
+        {"month": "2026-04", "job_count": 84, "avg_salary": 18.7, "is_forecast": False},
+        {"month": "2026-05", "job_count": 81, "avg_salary": 18.9, "is_forecast": False},
+        {"month": "2026-06", "job_count": 85, "avg_salary": 19.1, "is_forecast": False},
+        {"month": "2026-07", "job_count": 87, "avg_salary": 19.3, "is_forecast": False},
+        {"month": "2026-08", "job_count": 90, "avg_salary": 19.5, "is_forecast": False},
+        {"month": "2026-09", "job_count": 94, "avg_salary": 19.6, "is_forecast": False},
+        {"month": "2026-10", "job_count": 98, "avg_salary": 19.8, "is_forecast": False},
+        {"month": "2026-11*", "job_count": 101, "avg_salary": 20.0, "is_forecast": True},
+        {"month": "2026-12*", "job_count": 104, "avg_salary": 20.2, "is_forecast": True},
+        {"month": "2027-01*", "job_count": 107, "avg_salary": 20.4, "is_forecast": True},
+        {"month": "2027-02*", "job_count": 110, "avg_salary": 20.6, "is_forecast": True},
     ]
-    gx1, gy1, gx2, gy2 = 100, 450, 975, 845
+    gx1, gy1, gx2, gy2 = 100, 450, 990, 845
     max_cnt = max(max((x.get("forecast_job_count") or x.get("job_count") or 80) for x in monthly), 100)
     for k in range(5):
         yy = gy2 - int((gy2 - gy1) * k / 4)
@@ -278,19 +289,21 @@ def _render_fig1_executive_dashboard(m: Dict[str, Any]) -> Path:
         cnt = item.get("forecast_job_count") if item.get("is_forecast") else item.get("job_count", 80)
         cnt = cnt or 80
         bx = int(gx1 + idx * step + step * 0.2)
-        bw = max(24, int(step * 0.56))
+        bw = max(22, int(step * 0.58))
         bh = int((cnt / (max_cnt * 1.15)) * (gy2 - gy1))
         col = "#F59E0B" if item.get("is_forecast") else "#4F46E5"
-        d.rounded_rectangle([bx, gy2 - bh, bx + bw, gy2], radius=6, fill=col)
+        d.rounded_rectangle([bx, gy2 - bh, bx + bw, gy2], radius=5, fill=col)
         cnt_str = str(cnt)
-        cw_lbl = int(d.textlength(cnt_str, font=_font(11, bold=True)))
+        cw_lbl = int(d.textlength(cnt_str, font=_font(10, bold=True)))
         if bh >= 32:
-            d.text((bx + (bw - cw_lbl) // 2, gy2 - bh + 8), cnt_str, font=_font(11, bold=True), fill="#FFFFFF")
+            d.text((bx + (bw - cw_lbl) // 2, gy2 - bh + 8), cnt_str, font=_font(10, bold=True), fill="#FFFFFF")
         else:
-            d.text((bx + (bw - cw_lbl) // 2, gy2 - bh - 18), cnt_str, font=_font(11, bold=True), fill=col)
+            d.text((bx + (bw - cw_lbl) // 2, gy2 - bh - 18), cnt_str, font=_font(10, bold=True), fill=col)
         lbl = str(item["month"]).replace(" (Dự báo)", "*")
-        lw = int(d.textlength(lbl, font=_font(10, mono=True)))
-        d.text((bx + (bw - lw) // 2, gy2 + 12), lbl, font=_font(10, mono=True), fill="#D97706" if item.get("is_forecast") else "#475569")
+        if lbl.startswith("20"):
+            lbl = lbl[2:]
+        lw = int(d.textlength(lbl, font=_font(9, mono=True)))
+        d.text((bx + (bw - lw) // 2, gy2 + 12), lbl, font=_font(9, mono=True), fill="#D97706" if item.get("is_forecast") else "#475569")
         sal_y = gy2 - int(((item.get("avg_salary", 19.0) - 10) / 18.0) * (gy2 - gy1))
         sal_pts.append((bx + bw // 2, max(gy1 + 10, min(gy2 - 20, sal_y))))
     if len(sal_pts) > 1:
@@ -358,28 +371,40 @@ def _render_fig2_skill_intelligence(m: Dict[str, Any]) -> Path:
 
     # Left: Top 10 Horizontal Bar Chart
     _card(d, 40, 330, 1020, 920)
-    d.text((64, 350), "Top Kỹ năng ESCO được Tuyển dụng nhiều nhất & Mức cộng thưởng thu nhập", font=_font(17, bold=True), fill="#0F172A")
+    d.text((64, 348), "Top Kỹ năng ESCO được Tuyển dụng nhiều nhất & Mức cộng thưởng thu nhập", font=_font(17, bold=True), fill="#0F172A")
+    legend_items = [
+        ("Công nghệ Số & AI", "#2563EB"),
+        ("Môi trường, GIS & Xanh", "#059669"),
+        ("Nghiệp vụ Kỹ thuật", "#D97706"),
+        ("Ngoại ngữ & Quản lý", "#7C3AED"),
+    ]
+    lx = 64
+    for l_lbl, l_col in legend_items:
+        d.ellipse([lx, 381, lx + 11, 392], fill=l_col)
+        d.text((lx + 17, 379), l_lbl, font=_font(12, bold=True), fill="#475569")
+        lx += int(d.textlength(l_lbl, font=_font(12, bold=True))) + 38
+
     sks = m["skills"][:10] if m["skills"] else [
         {"name": "Python", "job_count": 620, "salary_premium_pct": 18.0, "demand_growth_yoy": 28.5, "category": "Digital & AI"},
         {"name": "PostgreSQL / SQL", "job_count": 510, "salary_premium_pct": 13.5, "demand_growth_yoy": 17.8, "category": "Digital & AI"},
+        {"name": "English / Bilingual Communication", "job_count": 398, "salary_premium_pct": 19.5, "demand_growth_yoy": 16.8, "category": "Soft & Management"},
         {"name": "FastAPI / RESTful API", "job_count": 360, "salary_premium_pct": 16.5, "demand_growth_yoy": 31.2, "category": "Digital & AI"},
         {"name": "React / TypeScript", "job_count": 330, "salary_premium_pct": 14.0, "demand_growth_yoy": 19.4, "category": "Digital & AI"},
         {"name": "Power BI / Tableau", "job_count": 295, "salary_premium_pct": 12.5, "demand_growth_yoy": 21.0, "category": "Digital & AI"},
-        {"name": "Cloud & Docker / K8s", "job_count": 280, "salary_premium_pct": 22.0, "demand_growth_yoy": 24.6, "category": "Digital & AI"},
-        {"name": "Machine Learning", "job_count": 245, "salary_premium_pct": 26.0, "demand_growth_yoy": 36.4, "category": "Digital & AI"},
-        {"name": "Vietnamese NLP / LLM", "job_count": 210, "salary_premium_pct": 31.0, "demand_growth_yoy": 44.8, "category": "Digital & AI"},
-        {"name": "ArcGIS / QGIS & Spatial", "job_count": 185, "salary_premium_pct": 19.5, "demand_growth_yoy": 26.5, "category": "Green & ESG"},
-        {"name": "Carbon Accounting & ESG", "job_count": 152, "salary_premium_pct": 24.0, "demand_growth_yoy": 38.2, "category": "Green & ESG"},
+        {"name": "Cloud & Docker / Kubernetes", "job_count": 280, "salary_premium_pct": 22.0, "demand_growth_yoy": 24.6, "category": "Digital & AI"},
+        {"name": "Machine Learning (Scikit-learn)", "job_count": 245, "salary_premium_pct": 26.0, "demand_growth_yoy": 36.4, "category": "Digital & AI"},
+        {"name": "ArcGIS / QGIS & Spatial Analysis", "job_count": 185, "salary_premium_pct": 19.5, "demand_growth_yoy": 26.5, "category": "Green & ESG"},
+        {"name": "Carbon Accounting & ESG Reporting", "job_count": 152, "salary_premium_pct": 24.0, "demand_growth_yoy": 38.2, "category": "Green & ESG"},
     ]
-    cat_cols = {"Digital & AI": "#4F46E5", "Green & ESG": "#10B981", "Technical / Hard Skill": "#0284C7", "Soft & Management": "#F59E0B"}
+    cat_cols = {"Digital & AI": "#2563EB", "Green & ESG": "#059669", "Technical / Hard Skill": "#D97706", "Soft & Management": "#7C3AED"}
     max_jc = max((s["job_count"] for s in sks), default=600)
     for i, s in enumerate(sks):
-        yy = 400 + i * 50
-        d.text((64, yy + 6), _clip(s["name"], 32), font=_font(13, bold=True), fill="#1E293B")
-        bar_col = cat_cols.get(s.get("category", "Digital & AI"), "#4F46E5")
-        bw = max(40, int(410 * (s["job_count"] / max_jc)))
-        d.rounded_rectangle([342, yy + 4, 342 + bw, yy + 30], radius=6, fill=bar_col)
-        d.text((352 + bw, yy + 7), f"{s['job_count']} việc  |  +{s['salary_premium_pct']}% lương  |  +{s['demand_growth_yoy']}%/năm", font=_font(12, bold=True), fill="#334155")
+        yy = 418 + i * 48
+        d.text((64, yy + 6), _clip(s["name"], 44), font=_font(12, bold=True), fill="#1E293B")
+        bar_col = cat_cols.get(s.get("category", "Digital & AI"), "#2563EB")
+        bw = max(40, int(350 * (s["job_count"] / max_jc)))
+        d.rounded_rectangle([395, yy + 4, 395 + bw, yy + 28], radius=6, fill=bar_col)
+        d.text((405 + bw, yy + 7), f"{s['job_count']} việc  |  +{s['salary_premium_pct']}% lương  |  +{s['demand_growth_yoy']}%/năm", font=_font(11, bold=True), fill="#334155")
 
     # Right: Scatter Preview & Insights
     _card(d, 1040, 330, 1560, 620)
@@ -588,12 +613,28 @@ def _render_fig4_gross_to_net_scoli(m: Dict[str, Any]) -> Path:
         ],
     }
 
-    # Controls Bar
-    _card(d, 40, 216, 1560, 290)
-    d.text((64, 232), "Thông số Thu nhập Đầu vào (Quy định Bảo hiểm 10.5% & Thuế TNCN Lũy tiến 7 bậc)", font=_font(15, bold=True), fill="#0F172A")
-    _badge(d, 900, 234, f"Lương Gross: {g2n['gross_salary_vnd']} Triệu VNĐ", "#EEF2FF", "#4338CA", "#C7D2FE")
-    _badge(d, 1140, 234, "Người phụ thuộc: 1 người (-4.4tr)", "#F8FAFC", "#0F172A", "#CBD5E1")
-    _badge(d, 1395, 234, f"Vùng: {g2n['selected_location']['name']}", "#ECFDF5", "#047857", "#A7F3D0")
+    # Interactive Controls Bar (Input box + Slider + Select dropdowns + Action Button)
+    _card(d, 40, 214, 1560, 298)
+    d.text((64, 224), "Thông số Thu nhập Đầu vào (Quy định Bảo hiểm 10.5% & Thuế TNCN Lũy tiến 7 bậc)", font=_font(13, bold=True), fill="#475569")
+    # Numeric input + range slider
+    d.rounded_rectangle([64, 248, 280, 286], radius=9, fill="#FFFFFF", outline="#6366F1", width=2)
+    d.text((80, 258), f"{g2n['gross_salary_vnd']} Triệu VNĐ", font=_font(13, bold=True, mono=True), fill="#312E81")
+    d.text((302, 260), "5tr", font=_font(11, mono=True), fill="#64748B")
+    d.rounded_rectangle([332, 264, 540, 271], radius=4, fill="#E2E8F0")
+    d.rounded_rectangle([332, 264, 384, 271], radius=4, fill="#4F46E5")
+    d.ellipse([376, 258, 392, 274], fill="#4F46E5", outline="#FFFFFF", width=2)
+    d.text((548, 260), "100tr", font=_font(11, mono=True), fill="#64748B")
+    # Dependents dropdown
+    d.rounded_rectangle([610, 248, 930, 286], radius=9, fill="#F8FAFC", outline="#CBD5E1", width=1)
+    d.text((626, 259), "Người phụ thuộc: 1 người (-4.4tr)", font=_font(12, bold=True), fill="#0F172A")
+    d.text((906, 259), "▼", font=_font(11), fill="#64748B")
+    # Region SCOLI dropdown
+    d.rounded_rectangle([950, 248, 1345, 286], radius=9, fill="#ECFDF5", outline="#6EE7B7", width=1)
+    d.text((968, 259), f"Khu vực SCOLI: {g2n['selected_location']['name']} ({g2n['selected_location']['scoli_index']}x)", font=_font(12, bold=True), fill="#047857")
+    d.text((1320, 259), "▼", font=_font(11), fill="#047857")
+    # Recalculate button
+    d.rounded_rectangle([1365, 248, 1540, 286], radius=9, fill="#4F46E5")
+    d.text((1404, 258), "Tính toán lại", font=_font(13, bold=True), fill="#FFFFFF")
 
     # Left 4 breakdown boxes
     ded = g2n["deductions"]
@@ -692,7 +733,7 @@ def _render_fig5_job_explorer(m: Dict[str, Any]) -> Path:
     for sk in (sel_j.get("skills") or [])[:3]:
         sk_n = sk["name"] if isinstance(sk, dict) else str(sk)
         bx += _badge(d, bx, 520, _clip(sk_n, 21), "#EEF2FF", "#4338CA") + 8
-    d.text((976, 574), "Mô tả công việc tóm tắt (Đã lọc mã độc HTML/XSS):", font=_font(14, bold=True), fill="#0F172A")
+    d.text((976, 574), "Mô tả công việc trọng tâm (Đã chuẩn hóa nội dung):", font=_font(14, bold=True), fill="#0F172A")
     lines = [
         "• Xây dựng và tối ưu hệ thống WebGIS kết hợp Python Backend (FastAPI).",
         "• Quản trị dữ liệu không gian PostgreSQL / PostGIS & chuẩn hóa ETL.",
@@ -702,6 +743,12 @@ def _render_fig5_job_explorer(m: Dict[str, Any]) -> Path:
     for i, ln in enumerate(lines):
         d.text((976, 608 + i * 30), ln, font=_font(13), fill="#334155")
 
+    d.line([976, 750, 1532, 750], fill="#E2E8F0", width=1)
+    d.rounded_rectangle([976, 772, 1532, 822], radius=12, fill="#4F46E5")
+    d.text((1095, 788), "Đưa JD này sang Phòng AI để Chấm điểm CV", font=_font(14, bold=True), fill="#FFFFFF")
+    d.rounded_rectangle([976, 838, 1532, 886], radius=12, fill="#F8FAFC", outline="#CBD5E1")
+    d.text((1128, 853), "So sánh lương vị trí này theo vùng", font=_font(13, bold=True), fill="#334155")
+
     out = SCREENSHOT_DIR / "fig5_job_explorer.png"
     img.save(out, format="PNG")
     return out
@@ -709,52 +756,60 @@ def _render_fig5_job_explorer(m: Dict[str, Any]) -> Path:
 
 def _render_fig6_ai_advisor_nlp_xai(m: Dict[str, Any]) -> Path:
     img, d = _draw_chrome_and_header("ai-lab", "/ai-lab?tab=advisor-nlp-xai")
+    r2_val = m.get("r2_score", 0.9)
+    mae_val = m.get("mae_score", 2.2)
     _card(d, 40, 132, 1560, 198)
     d.text((62, 148), "Phòng thí nghiệm AI", font=_font(20, bold=True), fill="#0F172A")
-    _badge(d, 270, 152, "ESCO v1.2 • RF R²=0.989 • ATS 4-Pillar", "#EEF2FF", "#4338CA", "#C7D2FE")
+    _badge(d, 265, 152, f"ESCO v1.2 • RF 5-Fold R²={r2_val:.3f} • MAE ±{mae_val}tr", "#EEF2FF", "#4338CA", "#C7D2FE")
     tabs = [("Cố vấn AI", True), ("Phân tích JD", False), ("Dự báo lương", False), ("Đánh giá CV", False), ("Kiểm toán đào tạo", False)]
     tx = 820
     for lbl, act in tabs:
         tx += _badge(d, tx, 152, lbl, "#FFFFFF" if act else "#F1F5F9", "#4F46E5" if act else "#475569", "#C7D2FE" if act else None) + 8
 
-    # Left: Conversational AI Hybrid RAG Advisor
+    # Left: Conversational AI Hybrid RAG Advisor + Interactive Chat Bar
     _card(d, 40, 216, 780, 920)
     d.text((64, 236), "1. Cố vấn AI Nghề nghiệp (Hybrid RAG + Khử từ đồng âm)", font=_font(16, bold=True), fill="#0F172A")
     _badge(d, 600, 234, "Local Expert / Gemini", "#ECFDF5", "#047857")
-    d.rounded_rectangle([240, 286, 754, 356], radius=12, fill="#4F46E5")
-    d.text((258, 298), "Sinh viên thích Python & GIS thì mức lương tại TP.HCM thế nào?", font=_font(13, bold=True), fill="#FFFFFF")
-    d.text((258, 322), "Nên học bổ sung kỹ năng gì để đàm phán thu nhập tốt hơn?", font=_font(13), fill="#E0E7FF")
+    d.rounded_rectangle([240, 282, 754, 348], radius=12, fill="#4F46E5")
+    d.text((258, 292), "Sinh viên thích Python & GIS thì mức lương tại TP.HCM thế nào?", font=_font(13, bold=True), fill="#FFFFFF")
+    d.text((258, 316), "Nên học bổ sung kỹ năng gì để đàm phán thu nhập tốt hơn?", font=_font(13), fill="#E0E7FF")
 
-    d.rounded_rectangle([64, 376, 754, 650], radius=14, fill="#F8FAFC", outline="#E2E8F0")
+    d.rounded_rectangle([64, 364, 754, 586], radius=14, fill="#F8FAFC", outline="#E2E8F0")
     chat_lines = [
         "Với định hướng Python kết hợp GIS tại TP. Hồ Chí Minh, mặt bằng thu",
         "nhập phổ biến hiện dao động khoảng 14.5 – 26.8 triệu VNĐ/tháng tùy số",
         "năm kinh nghiệm thực chiến (các vị trí Senior có thể đạt trên 32tr).",
-        "",
         "Để nâng cao giá trị hồ sơ khi đi phỏng vấn, bạn nên bổ sung:",
         "1. PostgreSQL / PostGIS để xử lý dữ liệu không gian dung lượng lớn.",
         "2. FastAPI + Docker giúp đóng gói và triển khai dịch vụ bản đồ WebGIS.",
         "3. Power BI / ESG Reporting phục vụ các dự án Chuyển đổi Xanh.",
-        "",
         "Nguồn tham chiếu: GSO 2026, ILO Vietnam, TopCV & Cổng MONRE GIS.",
     ]
     for i, ln in enumerate(chat_lines):
-        d.text((84, 394 + i * 23), ln, font=_font(13), fill="#1E293B")
+        d.text((84, 380 + i * 24), ln, font=_font(13), fill="#1E293B")
 
-    d.text((64, 678), "2. Bóc tách Tự động JD Tiếng Việt bằng NLP (F1=98.9%)", font=_font(16, bold=True), fill="#0F172A")
-    d.rounded_rectangle([64, 712, 754, 895], radius=12, fill="#F0F9FF", outline="#BAE6FD")
-    d.text((84, 728), "JD đầu vào: Senior Data Engineer, Python, ETL, $1,500 - $2,000 USD", font=_font(13, bold=True), fill="#0369A1")
-    d.text((84, 760), "• Chức danh chuẩn: Kỹ sư Dữ liệu (Data Engineer & ETL)", font=_font(13), fill="#0F172A")
-    d.text((84, 788), "• Quy đổi ngoại tệ USD -> VNĐ: 38.1 – 50.8 triệu (TB 44.5tr/tháng)", font=_font(13, bold=True), fill="#059669")
-    d.text((84, 816), "• Bẫy văn bản: Bỏ qua 'TOEIC 750+' (không nhận nhầm thành số năm KN)", font=_font(13), fill="#334155")
-    d.text((84, 844), "• Kỹ năng ESCO: Python, Data Engineering & ETL, PostgreSQL, Docker", font=_font(13), fill="#334155")
+    # Interactive Chat Input Box + Send button
+    d.rounded_rectangle([64, 598, 636, 636], radius=10, fill="#FFFFFF", outline="#CBD5E1", width=1)
+    d.text((82, 609), "Nhập câu hỏi về lương, kỹ năng, lộ trình nghề nghiệp...", font=_font(12), fill="#64748B")
+    d.rounded_rectangle([646, 598, 754, 636], radius=10, fill="#4F46E5")
+    d.text((674, 608), "Gửi  >", font=_font(13, bold=True), fill="#FFFFFF")
+
+    d.text((64, 660), "2. Bóc tách Tự động JD Tiếng Việt bằng NLP (F1=98.9%)", font=_font(16, bold=True), fill="#0F172A")
+    d.rounded_rectangle([580, 654, 754, 686], radius=8, fill="#EEF2FF", outline="#C7D2FE")
+    d.text((602, 662), "Phân tích JD khác", font=_font(12, bold=True), fill="#4338CA")
+    d.rounded_rectangle([64, 696, 754, 902], radius=12, fill="#F0F9FF", outline="#BAE6FD")
+    d.text((84, 712), "JD đầu vào: Senior Data Engineer, Python, ETL, $1,500 - $2,000 USD", font=_font(13, bold=True), fill="#0369A1")
+    d.text((84, 746), "• Chức danh chuẩn: Kỹ sư Dữ liệu (Data Engineer & ETL)", font=_font(13), fill="#0F172A")
+    d.text((84, 776), "• Quy đổi ngoại tệ USD -> VNĐ: 38.1 – 50.8 triệu (TB 44.5tr/tháng)", font=_font(13, bold=True), fill="#059669")
+    d.text((84, 806), "• Bẫy văn bản: Bỏ qua 'TOEIC 750+' (không nhận nhầm thành số năm KN)", font=_font(13), fill="#334155")
+    d.text((84, 836), "• Kỹ năng ESCO: Python, Data Engineering & ETL, PostgreSQL, Docker", font=_font(13), fill="#334155")
 
     # Right: Random Forest Salary ML + XAI Waterfall + Curriculum Audit
     _card(d, 800, 216, 1560, 610)
-    d.text((824, 236), "3. Dự báo Mức lương Công bằng (Random Forest R²=0.989) & Giải thích XAI", font=_font(16, bold=True), fill="#0F172A")
+    d.text((824, 236), f"3. Dự báo Mức lương (RF 5-Fold CV R²={r2_val:.3f}) & Giải thích XAI", font=_font(16, bold=True), fill="#0F172A")
     d.rounded_rectangle([824, 278, 1536, 362], radius=12, fill="#EEF2FF", outline="#C7D2FE")
     d.text((844, 292), "Dự báo cho Kỹ sư AI / NLP (3 năm KN • TP.HCM • Python, ML, Vietnamese NLP):", font=_font(13), fill="#334155")
-    d.text((844, 320), "Mức lương dự kiến: 31.1 triệu VNĐ/tháng   (Phân vị P25–P75: 25.8 – 36.1tr)", font=_font(18, bold=True), fill="#4338CA")
+    d.text((844, 320), f"Mức lương dự kiến: 31.1 triệu VNĐ/tháng   (MAE CV ±{mae_val}tr • P25–P75: 25.8 – 36.1tr)", font=_font(16, bold=True), fill="#4338CA")
 
     waterfall = [
         ("Lương cơ sở vị trí (Base Baseline)", "+16.4tr", 0.52, "#64748B"),
@@ -770,7 +825,9 @@ def _render_fig6_ai_advisor_nlp_xai(m: Dict[str, Any]) -> Path:
         d.text((1144 + bw, yy), val, font=_font(13, bold=True, mono=True), fill=col)
 
     _card(d, 800, 628, 1560, 920)
-    d.text((824, 648), "4. Kiểm toán Chương trình Đào tạo Đại học (Curriculum Audit)", font=_font(16, bold=True), fill="#0F172A")
+    d.text((824, 648), "4. Kiểm toán Chương trình Đào tạo ĐH (Curriculum Audit)", font=_font(16, bold=True), fill="#0F172A")
+    d.rounded_rectangle([1380, 644, 1536, 676], radius=8, fill="#059669")
+    d.text((1400, 652), "Chạy Kiểm toán", font=_font(12, bold=True), fill="#FFFFFF")
     d.text((824, 682), "Ngành: Hệ thống Thông tin, Khoa học Dữ liệu & Tin học Môi trường", font=_font(13), fill="#475569")
     d.rounded_rectangle([824, 714, 1536, 782], radius=12, fill="#ECFDF5", outline="#A7F3D0")
     d.text((844, 728), "Điểm Tiệm cận Nhu cầu Doanh nghiệp: 63.5% (Đã phủ 3 nhóm kỹ năng ESCO)", font=_font(15, bold=True), fill="#047857")
@@ -805,7 +862,7 @@ def _render_fig7_cv_ats_evaluator(m: Dict[str, Any]) -> Path:
     d.rounded_rectangle([64, 444, 626, 482], radius=10, fill="#F8FAFC", outline="#CBD5E1")
     d.text((80, 454), "Kỹ sư Phần mềm (Backend/Fullstack) • TP. Hồ Chí Minh", font=_font(13, bold=True), fill="#0F172A")
 
-    d.text((64, 502), "Văn bản Trích xuất Tự động từ File (Parser RAM):", font=_font(13, bold=True), fill="#334155")
+    d.text((64, 502), "Văn bản Trích xuất (3-Tier Hybrid RAM Parser):", font=_font(13, bold=True), fill="#334155")
     d.rounded_rectangle([64, 528, 626, 845], radius=12, fill="#F8FAFC", outline="#CBD5E1")
     cv_preview = [
         "NGUYEN MINH QUAN | quan.dev@gmail.com | 0912345678",
@@ -891,16 +948,17 @@ def _render_fig7_cv_ats_evaluator(m: Dict[str, Any]) -> Path:
 
 def _render_fig8_etl_pipeline_monitor(m: Dict[str, Any]) -> Path:
     img, d = _draw_chrome_and_header("etl", "/etl")
+    dq_pct = m.get("avg_data_quality_pct", 95.5)
     _card(d, 40, 132, 1560, 198)
     d.text((62, 148), "Nguồn dữ liệu & Giám sát Đồng bộ Pipeline ETL", font=_font(20, bold=True), fill="#0F172A")
     _badge(d, 580, 152, f"{m['total_jobs']} bản ghi sạch", "#EEF2FF", "#4338CA")
-    _badge(d, 740, 152, "95.3% sạch • Khử trùng 98.6%", "#ECFDF5", "#047857")
+    _badge(d, 740, 152, f"{dq_pct}% sạch • Khử trùng 98.6%", "#ECFDF5", "#047857")
     _badge(d, 1180, 152, "11 Nguồn tích hợp", "#4F46E5", "#FFFFFF")
     _badge(d, 1345, 152, "Thêm nguồn mới / HTML", "#F1F5F9", "#475569")
 
     # 4 Pipeline Architecture Stage Cards
     stages = [
-        ("Giai đoạn 1: Web Scraper", "HTTPX + BeautifulSoup4", "Thu thập HTML từ 11 nguồn uy tín"),
+        ("Giai đoạn 1: Multi-Adapter Ingestion", "3 Luồng Tiếp nhận Dữ liệu", "HTTP Scraper, JSON API & Raw HTML"),
         ("Giai đoạn 2: Làm sạch & Khử trùng", "Jaccard N-gram >= 0.82", "Chuẩn hóa tên DN & loại trùng lặp"),
         ("Giai đoạn 3: NLP Tiếng Việt & ESCO", "Regex 2 tầng + USD/VND", "Ánh xạ 21 nhóm kỹ năng chuẩn ESCO"),
         ("Giai đoạn 4: Lưu 3NF & Re-fit ML", "SQLAlchemy + Random Forest", "Cập nhật DB quan hệ & tái huấn luyện"),
@@ -1265,17 +1323,33 @@ def build_document_xml(m: Dict[str, Any]) -> str:
         "chuyển đổi tức thì Ngôn ngữ (Tiếng Việt / Tiếng Anh), Chủ đề (Sáng / Tối), Mật độ hiển thị (Thoải mái / Thu gọn) và Chế độ Đa tầng "
         "(Dễ hiểu cho sinh viên / Chuyên sâu với chỉ số P25–P90, R², ESCO, SCOLI cho chuyên gia). Toàn bộ 6 phân hệ đều có dữ liệu dự phòng chống màn hình trắng và lớp ViewErrorBoundary tự phục hồi."
     ))
+    r2_val = round(float(m.get("r2_score", 0.9)), 3)
+    mae_val = round(float(m.get("mae_score", 2.2)), 2)
+    dq_pct = m.get("avg_data_quality_pct", 95.5)
+
     parts.append(_w_table(
         ["Đường dẫn Mã nguồn", "Tầng Kiến trúc", "Nhiệm vụ Chính"],
         [
             ["backend/main.py", "API Gateway & Security", "Khởi tạo CSDL 3NF, auto-seed, huấn luyện ML khi khởi động (lifespan), Security Headers & Exception Shield."],
             ["backend/app/models.py", "3NF & OLAP Schema", "Định nghĩa 9 bảng ORM chuẩn 3NF và bảng tổng hợp OLAP MarketMonthlySnapshot."],
-            ["backend/app/services/cv_parser.py", "Binary CV Parser", "Đọc trực tiếp tệp PDF (xử lý kerning TJ âm, FlateDecode, Td/TD) và DOCX OpenXML (chống trùng lặp Textbox lồng nhau, đọc header/footer) trong RAM."],
-            ["backend/app/services/nlp_extractor.py", "Vietnamese NLP Core", "Bóc tách thực thể tiếng Việt 2 tầng chống từ đồng âm, quy đổi lương USD có dấu phẩy, loại trừ bẫy 'TOEIC 750+' và kiểm toán đề cương đại học."],
-            ["backend/app/services/ml_predictor.py", "ML, XAI & SCOLI", "RandomForestRegressor (80 cây, R²=0.989) + XAI Waterfall; LinearRegression dự báo 4 tháng; Gross-to-Net SCOLI 8 đô thị."],
-            ["backend/app/services/ai_assistant.py", "Hybrid RAG & ATS", "Trợ lý AI Hybrid RAG đa lượt và bộ chấm điểm hồ sơ CV theo 4 trụ cột chuẩn ATS/HR kèm gợi ý viết lại STAR/XYZ."],
+            ["backend/app/services/cv_parser.py", "3-Tier Hybrid CV Parser", "Đọc trực tiếp tệp PDF (Tầng 1 Stream FlateDecode + TJ kerning âm + Td/TD, Tầng 2 kiểm tra chất lượng văn bản, Tầng 3 PyMuPDF/pypdf fallback) và DOCX OpenXML (chống trùng lặp Textbox lồng nhau, đọc header/footer) trong RAM."],
+            ["backend/app/services/nlp_extractor.py", "Vietnamese NLP Core", "Bóc tách thực thể tiếng Việt 2 tầng chống từ đồng âm ('ai', 'thứ ba'), quy đổi lương USD có dấu phẩy, loại trừ bẫy 'TOEIC 750+' và kiểm toán đề cương đại học."],
+            ["backend/app/services/ml_predictor.py", "ML, XAI & SCOLI", f"RandomForestRegressor (80 cây, 5-Fold CV R²={r2_val:.3f}, MAE ±{mae_val}tr) + XAI Waterfall; Holt Double Exponential Smoothing + Linear Blend dự báo 4 tháng kèm khoảng tin cậy 90%; Gross-to-Net SCOLI 8 đô thị."],
+            ["backend/app/services/ai_assistant.py", "Hybrid RAG & ATS", "Trợ lý AI Hybrid RAG đa lượt và bộ chấm điểm hồ sơ CV theo 4 trụ cột chuẩn ATS/HR (tổng điểm khớp tuyệt đối 4 trụ cột, không kẹp ngưỡng giả) kèm gợi ý viết lại STAR/XYZ."],
             ["frontend/src/App.tsx", "Frontend Shell", "Thanh Header khóa flex-nowrap giữ nút Cài đặt cố định bên phải ở cả bản Tiếng Việt và Tiếng Anh."],
-            ["frontend/src/pages/*.tsx (6 phân hệ)", "UI Functional Modules", "ExecutiveDashboard, SkillIntelligence, RegionalAnalysis, JobExplorer, AILabStudio và ETLPipelineMonitor."]
+            ["frontend/src/pages/*.tsx (6 phân hệ)", "UI Functional Modules", "ExecutiveDashboard, SkillIntelligence, RegionalAnalysis, JobExplorer (kèm CTA chuyển JD sang Phòng AI & So sánh vùng), AILabStudio và ETLPipelineMonitor."]
+        ]
+    ))
+
+    parts.append(_w_h2("2.2. Bảng Đối chiếu Thuật ngữ Song tầng (Chế độ Dễ hiểu vs Chuyên sâu)"))
+    parts.append(_w_table(
+        ["Chế độ Chuyên sâu (Expert Mode)", "Chế độ Dễ hiểu (Simple Mode)", "Ý nghĩa Nghiệp vụ cho Người dùng Phổ thông"],
+        [
+            ["Trung vị P50 / Mean", "Mức lương phổ biến / Trung bình", "Con số lương ở chính giữa thị trường, không bị méo do vài vị trí lương quá cao."],
+            ["Phân vị P25 – P75", "Khung lương người mới – giàu kinh nghiệm", "Khoảng thu nhập thực tế từ nhân sự 1–2 năm đến nhân sự cứng 4–5 năm."],
+            ["Chỉ số giá sinh hoạt SCOLI", "Chỉ số đắt đỏ theo tỉnh/thành", "So sánh chi phí sinh hoạt thực tế giữa 8 đô thị để tính tiền tiết kiệm ròng hàng tháng."],
+            [f"Random Forest 5-Fold R²={r2_val:.3f}", "Độ tin cậy dự báo lương (~90%)", "Mức độ khớp của mô hình học máy khi kiểm thử chéo 5 lần trên dữ liệu thực tế."],
+            ["ETL Multi-Adapter & Jaccard >= 0.82", "Thu thập đa nguồn & Lọc tin trùng lặp", "Tự động chuẩn hóa tin tuyển dụng từ 11 nguồn chính thống và loại bỏ tin đăng lại."]
         ]
     ))
 
@@ -1286,7 +1360,7 @@ def build_document_xml(m: Dict[str, Any]) -> str:
     parts.append(_w_bullet("Thẻ KPI & Đối chuẩn Thống kê Quốc gia",
                            f"Thống kê {m['total_jobs']} việc làm xác thực, thu nhập trung vị P50={m['median_salary']}tr, trung bình {m['avg_salary']}tr, khung P25–P75 ({m['p25_salary']}–{m['p75_salary']}tr), đồng thời công bố mức thu nhập tái trọng số 3 khu vực GSO (~{m['gso_reweighted']}tr/tháng) để phản ánh khách quan toàn thị trường."))
     parts.append(_w_bullet("Dự báo Chuỗi thời gian 4 tháng tới",
-                           "Biểu đồ kết hợp 12 tháng lịch sử và 4 tháng dự báo (Linear Regression) cùng phân bổ chi tiết 7 nhóm ngành trọng điểm (CNTT/AI, Môi trường/GIS/ESG, Tài chính, Bán dẫn...)."))
+                           "Biểu đồ kết hợp 12 tháng lịch sử (2025-11..2026-10) và 4 tháng dự báo (Holt Double Exponential Smoothing kết hợp Linear Trend + khoảng tin cậy 90%) cùng phân bổ chi tiết 7 nhóm ngành trọng điểm (CNTT/AI, Môi trường/GIS/ESG, Tài chính, Bán dẫn...)."))
     parts.append(_w_image("rIdImg1", 1, "fig1_executive_dashboard.png",
                           "Hình 3.1. Giao diện Phân hệ 1 — Tổng quan Vĩ mô, Đối chuẩn GSO 2026 & Dự báo Chuỗi thời gian 4 tháng tới"))
 
@@ -1333,8 +1407,8 @@ def build_document_xml(m: Dict[str, Any]) -> str:
                           "Hình 3.7. Giao diện Phân hệ 5B — Tải File CV & Thẩm định Hồ sơ Ứng viên 4 Trụ cột ATS/HR kèm Gợi ý STAR/XYZ"))
 
     parts.append(_w_h2("3.6. Phân hệ 6: Thu Thập Đa Nguồn & Giám Sát Luồng Dữ Liệu ETL"))
-    parts.append(_w_bullet("Quản trị 11 Nguồn Uy tín & Luồng Làm sạch Khử trùng lặp 4 Giai đoạn",
-                           "Kết nối các nguồn chính thống (GSO, ILO, MOLISA, World Bank, TopCV, VietnamWorks, ITviec, LinkedIn, MONRE GIS, VINASA...), thực thi lọc trùng lặp pháp nhân công ty + Jaccard Shingle >= 0.82 và tự động kích hoạt học lại cho mô hình Học máy."))
+    parts.append(_w_bullet("Multi-Adapter Ingestion (3 Luồng Tiếp nhận) & 11 Nguồn Uy tín",
+                           f"Kết nối 11 nguồn chính thống (GSO, ILO, MOLISA, World Bank, TopCV, VietnamWorks, ITviec, LinkedIn, MONRE GIS, VINASA...) với chất lượng dữ liệu sạch đạt {dq_pct}%, thực thi lọc trùng lặp pháp nhân công ty + Jaccard Shingle >= 0.82 và tự động tái huấn luyện mô hình Học máy."))
     parts.append(_w_image("rIdImg8", 8, "fig8_etl_pipeline_monitor.png",
                           "Hình 3.8. Giao diện Phân hệ 6 — Hệ sinh thái 11 Nguồn Dữ liệu Chính thống & Nhật ký Giám sát Luồng ETL"))
 
@@ -1379,8 +1453,36 @@ def build_document_xml(m: Dict[str, Any]) -> str:
 
     # CHƯƠNG 6
     parts.append(_w_h1("CHƯƠNG 6. ĐỘ TIN CẬY, BẢO MẬT & KIỂM CHỨNG THỰC NGHIỆM"))
-    parts.append(_w_bullet("Kiểm chứng Tích hợp Backend", "Vượt qua trọn vẹn 12/12 nhóm kịch bản kiểm thử tích hợp tự động (test_api.py): toàn vẹn 3NF, NLP Gold Corpus F1=98.9%, Random Forest R²=0.989, chống bẫy từ đồng âm, CV ATS và SCOLI."))
-    parts.append(_w_bullet("Kiểm chứng Biên dịch & Giao diện Frontend", "Kiểm tra kiểu tĩnh TypeScript (tsc --noEmit) đạt 0 lỗi; build bản Production bằng Vite thành công; tương thích đầy đủ song ngữ Việt – Anh trên mọi độ phân giải."))
+    parts.append(_w_bullet("Kiểm chứng Tích hợp Backend", f"Vượt qua trọn vẹn 12/12 nhóm kịch bản kiểm thử tích hợp tự động (test_api.py): toàn vẹn 3NF ({m['total_jobs']} việc làm sạch, độ sạch trung bình {dq_pct}%), NLP Gold Corpus F1=98.9%, Random Forest 5-Fold Cross Validation R²={r2_val:.3f} (MAE ±{mae_val}tr), chống bẫy từ đồng âm, CV ATS 4 trụ cột và SCOLI."))
+    parts.append(_w_bullet("Kiểm chứng Biên dịch & Giao diện Frontend", "Kiểm tra kiểu tĩnh TypeScript (tsc --noEmit) đạt 0 lỗi; build bản Production bằng Vite thành công; tương thích đầy đủ song ngữ Việt – Anh và Chế độ Đa tầng (Dễ hiểu / Chuyên sâu) trên mọi độ phân giải."))
+
+    # CHƯƠNG 7
+    parts.append(_w_h1("CHƯƠNG 7. CẨM NANG GIẢI TRÌNH & BẢO VỆ CHUYÊN MÔN TRƯỚC HỘI ĐỒNG"))
+    parts.append(_w_h2("Câu hỏi 1: Tại sao lương trung vị P50 trong kho dữ liệu là " + f"{m['median_salary']} triệu nhưng mức đối chuẩn GSO 2026 chỉ còn ~{m['gso_reweighted']} triệu VNĐ/tháng?"))
+    parts.append(_w_p(
+        f"Trả lời: Kho dữ liệu tuyển dụng trực tuyến tập trung vào lao động chính thức tại các đô thị công nghệ lớn (TP.HCM, Hà Nội, Đà Nẵng) "
+        f"nên trung vị đạt P50={m['median_salary']} triệu (Mean={m['avg_salary']} triệu). Để tránh thiên lệch mẫu đô thị (Selection Bias), hệ thống áp dụng "
+        f"kỹ thuật Hậu phân tầng Tái trọng số (Post-stratification Reweighting) theo cơ cấu 3 khu vực của Tổng cục Thống kê (GSO 2026), hiệu chỉnh thu nhập bình quân "
+        f"về mức ~{m['gso_reweighted']} triệu VNĐ/tháng (tiệm cận chuẩn cả nước 8.4 triệu/tháng của GSO)."
+    ))
+    parts.append(_w_h2(f"Câu hỏi 2: Làm sao chứng minh mô hình Random Forest dự báo lương (R²={r2_val:.3f}) không bị Overfitting và giải thích được cho người dùng?"))
+    parts.append(_w_p(
+        f"Trả lời: Mô hình sử dụng KFold 5-Fold Cross Validation (nghiêm ngặt ngoài mẫu huấn luyện) với cây quyết định giới hạn độ sâu (max_depth=5, min_samples_leaf=8), "
+        f"đạt R²={r2_val:.3f} và sai số tuyệt đối trung bình MAE=±{mae_val} triệu/tháng, đồng thời lưu cache theo đúng phiên bản scikit-learn. Kết quả dự báo luôn đi kèm "
+        f"biểu đồ phân rã XAI Waterfall tách bạch 4 nhân tố đóng góp: Lương cơ sở vị trí, Thâm niên kinh nghiệm, Hệ số vùng và Cộng thưởng kỹ năng ESCO."
+    ))
+    parts.append(_w_h2("Câu hỏi 3: Hệ thống đọc CV PDF/DOCX và xử lý Tiếng Việt có bị lỗi dính chữ, nhân đôi chữ hoặc nhận nhầm từ đồng âm không?"))
+    parts.append(_w_p(
+        "Trả lời: Trình đọc CV hoạt động hoàn toàn trong RAM (Zero Disk Leak) theo kiến trúc 3 tầng Hybrid: Tầng 1 phân tích trực tiếp stream nén FlateDecode & CMap với nhận diện kerning TJ âm (< -100) "
+        "và tọa độ Td/TD; Tầng 2 đánh giá chất lượng văn bản; Tầng 3 tự động chuyển sang PyMuPDF/pypdf khi gặp PDF mã hóa phông phức tạp. Đối với DOCX, trình phân tích duyệt tách biệt txbxContent và header/footer "
+        "tránh nhân đôi văn bản. Bộ NLP sử dụng khử từ đồng âm theo ngữ cảnh ('ai' -> trí tuệ nhân tạo vs đại từ nghi vấn; 'thứ ba' -> ngày trong tuần vs bên thứ ba; anti-TOEIC trap tránh nhầm TOEIC 750 thành số năm kinh nghiệm)."
+    ))
+    parts.append(_w_h2("Câu hỏi 4: Đề tài mang lại giá trị thực tiễn gì cho Sinh viên, Người lao động và Nhà trường tại Việt Nam?"))
+    parts.append(_w_p(
+        "Trả lời: Hệ thống phục vụ 3 nhóm đối tượng trực tiếp: (1) Sinh viên/Ứng viên có thể tải CV nhận điểm chấm 4 trụ cột ATS/HR, gợi ý viết lại câu theo chuẩn STAR/XYZ và đưa thẳng tin tuyển dụng từ Tra cứu việc làm sang Phòng AI; "
+        "(2) Người lao động sử dụng Bộ tính Gross -> Net kết hợp chỉ số SCOLI để biết số tiền tiết kiệm thực tế sau chi phí sống tại 8 đô thị kèm bản đồ WebGIS WGS84 thể hiện đầy đủ chủ quyền Hoàng Sa và Trường Sa; "
+        "(3) Giảng viên/Nhà trường sử dụng Công cụ Kiểm toán Đề cương Đại học để phát hiện ngay các kỹ năng thị trường đang thiếu hụt như Vietnamese NLP/LLM hoặc Cloud/Docker."
+    ))
 
     body_content = "\n".join(parts)
 

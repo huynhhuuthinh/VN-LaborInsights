@@ -182,18 +182,39 @@ export const SkillIntelligenceView: React.FC = () => {
             <h3 className="text-base font-bold text-slate-900 dark:text-white">
               {t('12 Kỹ năng được doanh nghiệp yêu cầu nhiều nhất', 'Top 12 Most Requested Skills by Employers')}
             </h3>
-            <p className="text-xs text-slate-500 mb-4">
+            <p className="text-xs text-slate-500 mb-3">
               {t('Số lượng tin tuyển dụng đang đòi hỏi từng kỹ năng.', 'Number of active job postings requiring each skill.')}
             </p>
-            <div className="h-[360px] w-full">
+            <div className="flex flex-wrap items-center gap-4 mb-4 text-[11px] font-semibold text-slate-600 dark:text-slate-300">
+              <span className="inline-flex items-center gap-1.5" title={t('Kỹ năng Công nghệ số, Phần mềm & AI', 'Digital, Software & AI skills')}>
+                <span className="w-2.5 h-2.5 rounded-full bg-[#2563EB]" />
+                {t('Công nghệ Số & AI', 'Digital & AI')}
+              </span>
+              <span className="inline-flex items-center gap-1.5" title={t('Kỹ năng Môi trường, GIS & Kinh tế Xanh', 'Environmental, GIS & Green skills')}>
+                <span className="w-2.5 h-2.5 rounded-full bg-[#059669]" />
+                {t('Môi trường, GIS & Xanh', 'Green & ESG')}
+              </span>
+              <span className="inline-flex items-center gap-1.5" title={t('Nghiệp vụ chuyên môn & Kỹ thuật cốt lõi', 'Core Technical & Domain skills')}>
+                <span className="w-2.5 h-2.5 rounded-full bg-[#D97706]" />
+                {t('Nghiệp vụ Kỹ thuật', 'Technical')}
+              </span>
+              <span className="inline-flex items-center gap-1.5" title={t('Kỹ năng Ngoại ngữ, Giao tiếp & Quản lý', 'Communication, English & Management skills')}>
+                <span className="w-2.5 h-2.5 rounded-full bg-[#7C3AED]" />
+                {t('Ngoại ngữ & Quản lý', 'Soft & Management')}
+              </span>
+            </div>
+            <div
+              className="h-[360px] w-full"
+              title={t('Biểu đồ xếp hạng 12 kỹ năng ESCO có nhu cầu tuyển dụng cao nhất', 'Ranking chart of top 12 in-demand ESCO skills')}
+            >
               <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={skills.slice(0, 12)} layout="vertical" margin={{ top: 5, right: 20, left: 25, bottom: 5 }}>
+                <BarChart data={skills.slice(0, 12)} layout="vertical" margin={{ top: 5, right: 20, left: 10, bottom: 5 }}>
                   <CartesianGrid strokeDasharray="3 3" stroke="#CBD5E1" opacity={0.5} />
                   <XAxis type="number" tick={{ fill: '#475569', fontSize: 11 }} />
                   <YAxis
                     type="category"
                     dataKey="name"
-                    width={175}
+                    width={235}
                     tick={{ fill: '#334155', fontSize: 11, fontWeight: 600 }}
                   />
                   <Tooltip

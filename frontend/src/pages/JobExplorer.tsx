@@ -4,7 +4,9 @@ import {
   ChevronLeft,
   ChevronRight,
   ChevronDown,
-  ChevronUp
+  ChevronUp,
+  Sparkles,
+  MapPin
 } from 'lucide-react';
 import { searchJobs, fetchFilterOptions } from '../services/api';
 import { useSettings } from '../context/SettingsContext';
@@ -70,8 +72,10 @@ const FALLBACK_JOBS = {
   ],
 };
 
-export const JobExplorerView: React.FC = () => {
-  const { t } = useSettings();
+export const JobExplorerView: React.FC<{ onNavigateTab?: (tab: string) => void }> = ({
+  onNavigateTab
+}) => {
+  const { t, expertMode } = useSettings();
   const [filtersMeta, setFiltersMeta] = useState<any>(FALLBACK_FILTERS);
 
   const [queryText, setQueryText] = useState('');
@@ -158,9 +162,21 @@ export const JobExplorerView: React.FC = () => {
       {/* Compact Search & Filter Bar (ITviec / LinkedIn style) */}
       <div className="bg-white dark:bg-[#0D1322] border border-slate-200/90 dark:border-slate-800/80 rounded-2xl p-4 shadow-2xs space-y-3">
         <div className="flex items-center justify-between gap-2">
-          <h1 className="text-lg font-extrabold text-slate-900 dark:text-white">
-            {t('Tra cứu việc làm', 'Job Explorer')}
-          </h1>
+          <div>
+            <h1 className="text-lg font-extrabold text-slate-900 dark:text-white">
+              {expertMode
+                ? t('Tra cứu việc làm & Tin tuyển dụng chuẩn hóa', 'Job Explorer & Standardized Listings')
+                : t('Tìm việc làm & Xem mức lương thực tế', 'Explore Jobs & Real Salary Ranges')}
+            </h1>
+            {!expertMode && (
+              <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                {t(
+                  'Chọn một công việc bên trái để xem kỹ năng nhà tuyển dụng cần và thử chấm điểm CV với AI.',
+                  'Pick a job on the left to inspect required skills and test your CV match with AI.'
+                )}
+              </p>
+            )}
+          </div>
           <span className="text-xs font-semibold text-slate-500 dark:text-slate-400">
             <strong className="text-indigo-600 dark:text-amber-400 font-mono">{result.total}</strong> {t('việc làm', 'jobs')}
           </span>
@@ -426,6 +442,46 @@ export const JobExplorerView: React.FC = () => {
                     {selectedJob.description_raw}
                   </p>
                 )}
+              </div>
+
+              {/* Action CTAs linking Job Explorer -> AI Lab & Regional Comparison */}
+              <div className="pt-3 border-t border-slate-200 dark:border-slate-800 space-y-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    sessionStorage.setItem(
+                      'vn_labor_cta_job',
+                      JSON.stringify({
+                        role: selectedJob.normalized_title,
+                        location: selectedJob.location_name,
+                        jd: selectedJob.description_raw,
+                        title: selectedJob.title
+                      })
+                    );
+                    onNavigateTab?.('ai-lab');
+                  }}
+                  className="w-full inline-flex items-center justify-center gap-2 px-3.5 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold transition shadow-2xs"
+                >
+                  <Sparkles className="w-3.5 h-3.5" />
+                  <span>{t('Đưa JD này sang Phòng AI để Chấm điểm CV', 'Send This JD to AI Lab for CV Scoring')}</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    sessionStorage.setItem(
+                      'vn_labor_region_job',
+                      JSON.stringify({
+                        role: selectedJob.normalized_title,
+                        location: selectedJob.location_name
+                      })
+                    );
+                    onNavigateTab?.('regions');
+                  }}
+                  className="w-full inline-flex items-center justify-center gap-2 px-3.5 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 hover:bg-slate-100 dark:bg-slate-900 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-200 text-xs font-bold transition"
+                >
+                  <MapPin className="w-3.5 h-3.5 text-indigo-500" />
+                  <span>{t('So sánh lương vị trí này theo vùng', 'Compare Salary by Region')}</span>
+                </button>
               </div>
             </div>
           ) : null}

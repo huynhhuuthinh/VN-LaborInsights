@@ -146,7 +146,7 @@ def run_all_tests():
         assert "readiness_score_pct" in gap_json
         print(f"[8/12] Skill gap analysis (Readiness={gap_json['readiness_score_pct']}%): PASS")
 
-        # 9. ETL Pipeline Trigger
+        # 9. ETL Pipeline Trigger (dọn dẹp bản ghi kiểm thử tạm sau khi xác minh để giữ DB sạch)
         etl_json = trigger_etl_run(
             ETLTriggerRequest(
                 source_platform="TopCV & VietnamWorks",
@@ -155,7 +155,17 @@ def run_all_tests():
             db=db,
         )
         assert etl_json["status"] == "SUCCESS"
-        print("[9/12] Multi-source ETL pipeline trigger: PASS")
+        from app.models import ETLPipelineRun, JobPosting, JobSkill
+        temp_run = db.query(ETLPipelineRun).filter(ETLPipelineRun.run_code == etl_json["run_code"]).first()
+        if temp_run:
+            db.delete(temp_run)
+        temp_codes = [rec["job_code"] for rec in etl_json.get("sample_records", []) if rec.get("job_code")]
+        extra_jobs = db.query(JobPosting).filter(JobPosting.job_code.like("VNJOB-SRC-%")).all()
+        for ej in extra_jobs:
+            db.query(JobSkill).filter(JobSkill.job_id == ej.id).delete()
+            db.delete(ej)
+        db.commit()
+        print(f"[9/12] Multi-source ETL pipeline trigger ({len(temp_codes)} sample records verified): PASS")
 
         # 10. Conversational AI Assistant & Homonym Guard
         chat_json = api_ai_economist_chat(

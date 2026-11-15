@@ -77,24 +77,50 @@ def _parse_pdf_tounicode_cmap(txt: str) -> Dict[int, str]:
     return cmap
 
 
-def extract_text_from_pdf_bytes(file_bytes: bytes) -> str:
-    """
-    Trích xuất văn bản tiếng Việt từ file PDF nhị phân (hỗ trợ cả pypdf/PyPDF2 nếu có
-    và bộ giải mã luồng FlateDecode + ToUnicode CMap nội bộ không phụ thuộc thư viện ngoài).
-    """
-    # 1. Thử dùng thư viện pypdf / PyPDF2 / fitz nếu môi trường có cài đặt
+def _is_valid_cv_text_quality(text: str) -> bool:
+    """Kiểm tra chất lượng chuỗi văn bản trích xuất từ PDF (chống lỗi CIDFont/Identity-H ra ký tự rác)."""
+    cleaned = re.sub(r"\s+", "", text or "")
+    if len(cleaned) < 12:
+        return False
+    readable = re.findall(r"[0-9A-Za-zÀ-ỹ.,;:/\-+@()%]", cleaned)
+    return (len(readable) / max(1, len(cleaned))) >= 0.78
+
+
+def _extract_pdf_via_library_ram(file_bytes: bytes) -> str:
+    """Tầng 3 (Fallback trong RAM): Dùng PyMuPDF (fitz) hoặc pypdf/PyPDF2 giải mã PDF Canva/CIDFont."""
+    try:
+        fitz = __import__("fitz")
+        doc = fitz.open(stream=file_bytes, filetype="pdf")
+        try:
+            joined = "\n".join(page.get_text("text") or "" for page in doc).strip()
+            if joined:
+                return joined
+        finally:
+            doc.close()
+    except Exception:
+        pass
+
     for lib_name in ("pypdf", "PyPDF2"):
         try:
             mod = __import__(lib_name)
             reader = mod.PdfReader(io.BytesIO(file_bytes))
             pages_txt = [page.extract_text() or "" for page in reader.pages]
             joined = "\n".join(pages_txt).strip()
-            if len(joined) >= 20:
+            if joined:
                 return joined
         except Exception:
             pass
+    return ""
 
-    # 2. Bộ giải mã PDF nội bộ hỗ trợ bảng mã ToUnicode CMap tiếng Việt & ghép dòng theo tọa độ Y
+
+def extract_text_from_pdf_bytes(file_bytes: bytes) -> str:
+    """
+    Trích xuất văn bản tiếng Việt từ file PDF theo Chiến lược Hybrid 3 Tầng trong RAM (Zero-Disk I/O):
+    - Tầng 1: Bộ giải mã luồng nhị phân tự viết (FlateDecode + ToUnicode CMap + kerning TJ âm + Td/TD).
+    - Tầng 2: Kiểm tra tỷ lệ ký tự đọc được & mật độ cấu trúc CV (Text Quality Heuristic).
+    - Tầng 3: Fallback PyMuPDF / pypdf trực tiếp trên BytesIO cho các mẫu PDF Canva/Figma CIDFont phức tạp.
+    """
+    # Tầng 1: Chạy bộ giải mã PDF nhị phân nội bộ trước
     objs: Dict[int, tuple] = {}
     for m in re.finditer(rb"(\d+)\s+0\s+obj\b(.*?)endobj", file_bytes, re.S):
         oid = int(m.group(1))
@@ -222,7 +248,20 @@ def extract_text_from_pdf_bytes(file_bytes: bytes) -> str:
         if joined_line:
             lines.append(joined_line)
 
-    return "\n".join(lines).strip()
+    custom_text = "\n".join(lines).strip()
+
+    # Tầng 2 & Tầng 3: Kiểm tra chất lượng văn bản tiếng Việt; fallback trong RAM nếu bị lỗi Font CID/Canva
+    has_cv_signals = any(
+        kw in custom_text.lower()
+        for kw in ("kinh nghiệm", "học vấn", "kỹ năng", "project", "education", "@", "python", "fast")
+    )
+    if _is_valid_cv_text_quality(custom_text) and (has_cv_signals or len(custom_text) >= 15):
+        return custom_text
+
+    lib_text = _extract_pdf_via_library_ram(file_bytes)
+    if lib_text and (_is_valid_cv_text_quality(lib_text) or len(lib_text) > len(custom_text)):
+        return lib_text
+    return custom_text or lib_text
 
 
 def extract_text_from_docx_bytes(file_bytes: bytes) -> str:

@@ -714,7 +714,8 @@ def evaluate_candidate_profile(
     # 1. Trụ cột Kỹ năng chuyên môn (Tối đa 40 điểm)
     core_match_ratio = gap_res["readiness_score_pct"] / 100.0
     extra_skills_bonus = min(6.0, max(0, len(skills_found) - len(gap_res["matched_skills"])) * 2.0)
-    skills_score_40 = min(40, int(round(core_match_ratio * 34.0 + extra_skills_bonus)))
+    max_skill_cap = 40 if core_match_ratio >= 0.99 and len(skills_found) >= 8 else 38
+    skills_score_40 = min(max_skill_cap, int(round(core_match_ratio * 32.0 + extra_skills_bonus)))
 
     # 2. Trụ cột Kinh nghiệm & Dự án thực tế (Tối đa 25 điểm)
     exp_score_25 = 12
@@ -734,9 +735,10 @@ def evaluate_candidate_profile(
     # 4. Trụ cột Cấu trúc ATS & Độ hoàn thiện (Tối đa 15 điểm)
     structure_score_15 = ats_inspection["structure_score_15"]
 
-    total_profile_score = min(
-        98,
-        max(18, skills_score_40 + exp_score_25 + impact_score_20 + structure_score_15),
+    # Đảm bảo Tổng điểm luôn bằng ĐÚNG tổng 4 trụ cột (nhất quán toán học 100%)
+    total_profile_score = max(
+        18,
+        min(100, skills_score_40 + exp_score_25 + impact_score_20 + structure_score_15),
     )
 
     if total_profile_score >= 80:

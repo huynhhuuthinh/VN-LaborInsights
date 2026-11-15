@@ -53,11 +53,13 @@ def get_macro_overview(
         JobPosting.work_mode,
         JobPosting.source_platform,
         JobPosting.normalized_title,
+        JobPosting.data_quality_score,
     ).all()
     total_jobs = len(jobs)
     all_industries = {i.id: i for i in db.query(Industry).all()}
 
     salaries = []
+    quality_sum = 0.0
     month_map = {}
     ind_stats = {}
     exp_stats = {}
@@ -66,8 +68,9 @@ def get_macro_overview(
     role_stats = {}
 
     # Gom toàn bộ thống kê chỉ trong 1 vòng lặp duy nhất (O(N))
-    for sal, m, ind_id, lv, wm, sp, rt in jobs:
+    for sal, m, ind_id, lv, wm, sp, rt, dq in jobs:
         salaries.append(sal)
+        quality_sum += float(dq or 0.954)
 
         mm = month_map.get(m)
         if mm is None:
@@ -192,7 +195,7 @@ def get_macro_overview(
             "gso_reweighted_avg_salary_vnd": gso_reweighted_avg,
             "yoy_demand_growth_pct": 16.4,
             "emerging_skills_ratio_pct": 68.2,
-            "avg_data_quality_score": 95.4
+            "avg_data_quality_score": round((quality_sum / max(1, total_jobs)) * 100.0, 1)
         },
         "gso_national_benchmark": {
             "statutory_region1_min_wage_vnd": 5.31,

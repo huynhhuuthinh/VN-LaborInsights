@@ -17,3 +17,4 @@ venv/
 # Internal-only auditing tool (never publish to web/GitHub)
 backend/tests/jury_benchmark.py
 jury_benchmark.py
+backend/app/models_cache/

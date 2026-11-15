@@ -193,6 +193,25 @@ KINH NGHIỆM LÀM VIỆC & DỰ ÁN THỰC TẾ (2.5 năm kinh nghiệm):
     scrollToBottom();
   }, [chatHistory, thinkingStatus]);
 
+  // Handoff from JobExplorer CTA ("Đưa JD này sang Phòng AI để Chấm điểm CV")
+  useEffect(() => {
+    const rawCta = sessionStorage.getItem('vn_labor_cta_job');
+    if (rawCta) {
+      try {
+        const parsed = JSON.parse(rawCta);
+        setSubTab('cv-eval');
+        if (parsed.role) setCvTargetRole(parsed.role);
+        if (parsed.location) setCvLocation(parsed.location);
+        if (parsed.title) setJdTitle(parsed.title);
+        if (parsed.jd) setJdText(parsed.jd);
+      } catch {
+        // Ignore malformed handoff payload
+      } finally {
+        sessionStorage.removeItem('vn_labor_cta_job');
+      }
+    }
+  }, []);
+
   const runNlpAnalysis = async () => {
     setNlpLoading(true);
     try {

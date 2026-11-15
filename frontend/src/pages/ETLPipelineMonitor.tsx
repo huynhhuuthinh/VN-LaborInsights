@@ -116,7 +116,7 @@ const DEFAULT_SOURCES_FALLBACK = [
 ];
 
 export const ETLPipelineMonitorView: React.FC = () => {
-  const { t } = useSettings();
+  const { t, expertMode } = useSettings();
   const [statusData, setStatusData] = useState<any>(null);
   const [subTab, setSubTab] = useState<'catalog' | 'add-custom' | 'history'>('catalog');
   const [selectedCategory, setSelectedCategory] = useState<string>('ALL');
@@ -179,7 +179,9 @@ export const ETLPipelineMonitorView: React.FC = () => {
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 bg-white dark:bg-[#0D1322] border border-slate-200/90 dark:border-slate-800/80 rounded-2xl px-5 py-3.5 shadow-2xs">
         <div className="flex flex-wrap items-center gap-3">
           <h1 className="text-lg font-extrabold text-slate-900 dark:text-white">
-            {t('Nguồn dữ liệu & Đồng bộ ETL', 'Data Sources & ETL Sync')}
+            {expertMode
+              ? t('Nguồn dữ liệu & Đồng bộ ETL', 'Data Sources & ETL Sync')
+              : t('Nguồn dữ liệu việc làm & Độ tin cậy', 'Job Data Sources & Trust Score')}
           </h1>
           <span className="px-2.5 py-0.5 rounded-full text-xs font-mono font-bold bg-indigo-50 dark:bg-indigo-500/15 text-indigo-700 dark:text-amber-300">
             {summary.total_clean_records_in_db || 960} {t('bản ghi', 'records')}
