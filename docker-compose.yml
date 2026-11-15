@@ -1,0 +1,29 @@
+version: '3.8'
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: vn_labor_postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: huy_admin
+      POSTGRES_PASSWORD: labor_password_2026
+      POSTGRES_DB: vn_labor_market_db
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./database/init_schema.sql:/docker-entrypoint-initdb.d/init_schema.sql
+
+  adminer:
+    image: adminer:latest
+    container_name: vn_labor_adminer
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    depends_on:
+      - postgres
+
+volumes:
+  postgres_data:
+

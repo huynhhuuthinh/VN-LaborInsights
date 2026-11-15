@@ -1,0 +1,19 @@
+# Dependencies & Build Artifacts
+node_modules/
+frontend/node_modules/
+frontend/dist/
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+.venv/
+venv/
+.env
+.env.*
+
+# Office temporary lock files
+~$*
+
+# Internal-only auditing tool (never publish to web/GitHub)
+backend/tests/jury_benchmark.py
+jury_benchmark.py
