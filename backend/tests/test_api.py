@@ -30,6 +30,17 @@ from app.routers.ai_tools import (
     api_evaluate_candidate_profile,
     api_parse_and_evaluate_cv_file,
     api_audit_curriculum,
+    api_get_ai_chat_history,
+    api_delete_chat_history_item,
+    api_get_cv_history,
+)
+from app.routers.auth import (
+    api_register_user,
+    api_login_user,
+    api_get_user_profile,
+    api_update_user_profile,
+    api_get_saved_jobs,
+    api_upsert_or_toggle_saved_job,
 )
 from app.routers.etl import trigger_etl_run
 from app.schemas import (
@@ -41,6 +52,10 @@ from app.schemas import (
     CurriculumAuditRequest,
     ETLTriggerRequest,
     GrossToNetRequest,
+    UserRegisterRequest,
+    UserLoginRequest,
+    UserProfileUpdateRequest,
+    SavedJobRequest,
 )
 
 
@@ -240,9 +255,62 @@ def run_all_tests():
         )
         assert g2n_json["net_salary_vnd"] < 25.0
         assert len(g2n_json["city_savings_comparison"]) >= 6
-        print("[12/12] Gross-to-Net & GSO SCOLI Purchasing Power Calculator: PASS")
+        print("[12/13] Gross-to-Net & GSO SCOLI Purchasing Power Calculator: PASS")
 
-        print("ALL 14 API, 3NF DB, XAI, CURRICULUM AUDIT & SCOLI TESTS PASSED SUCCESSFULLY!")
+        # 13. Auth (Register, Login, Profile), Saved Jobs Tracker, AI Chat History & CV History
+        demo_login = api_login_user(UserLoginRequest(email="demo@vnlabor.vn", password="Demo@2026"), db=db)
+        assert demo_login["status"] == "SUCCESS"
+        assert demo_login["user"]["email"] == "demo@vnlabor.vn"
+
+        test_email = "test_candidate_ci@vnlabor.vn"
+        from app.models import UserAccount, SavedJobBookmark, ChatSessionLog, CVEvaluationHistory, JobPosting
+        old_u = db.query(UserAccount).filter(UserAccount.email == test_email).first()
+        if old_u:
+            db.delete(old_u)
+            db.commit()
+
+        reg_res = api_register_user(
+            UserRegisterRequest(
+                email=test_email,
+                full_name="Kiểm thử Ứng viên",
+                password="Secret@2026",
+                target_location="Đà Nẵng",
+            ),
+            db=db,
+        )
+        assert reg_res["status"] == "SUCCESS"
+        me_res = api_get_user_profile(email=test_email, db=db)
+        assert me_res["user"]["full_name"] == "Kiểm thử Ứng viên"
+        upd_res = api_update_user_profile(UserProfileUpdateRequest(experience_years=3.0), email=test_email, db=db)
+        assert upd_res["user"]["experience_years"] == 3.0
+
+        any_job = db.query(JobPosting).first()
+        bm_save = api_upsert_or_toggle_saved_job(
+            SavedJobRequest(user_email=test_email, job_id=any_job.id, application_status="Đã nộp CV"),
+            db=db,
+        )
+        assert bm_save["action"] == "SAVED"
+        saved_list = api_get_saved_jobs(email=test_email, db=db)
+        assert saved_list["total"] == 1
+
+        chat_hist = api_get_ai_chat_history(limit=20, db=db)
+        assert chat_hist["total"] >= 3
+        cv_hist = api_get_cv_history(email="demo@vnlabor.vn", limit=20, db=db)
+        assert cv_hist["total"] >= 2
+
+        # Cleanup temp test artifacts so database stays spotless
+        if chat_json.get("log_id"):
+            api_delete_chat_history_item(chat_json["log_id"], db=db)
+        if homonym_json.get("log_id"):
+            api_delete_chat_history_item(homonym_json["log_id"], db=db)
+        db.query(SavedJobBookmark).filter(SavedJobBookmark.user_email == test_email).delete()
+        db.query(UserAccount).filter(UserAccount.email == test_email).delete()
+        db.query(CVEvaluationHistory).filter(CVEvaluationHistory.filename == "CV_Tran_Thu_Ha.txt").delete()
+        db.query(CVEvaluationHistory).filter(CVEvaluationHistory.filename == "CV_Van_Ban_Truc_Tiep.txt").delete()
+        db.commit()
+        print("[13/13] User Auth, Profile, Saved Jobs, AI Chat History & CV History: PASS")
+
+        print("ALL 15 API, 3NF DB, AUTH, WORKSPACE HISTORY & SCOLI TESTS PASSED SUCCESSFULLY!")
     finally:
         db.close()
 

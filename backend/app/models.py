@@ -102,11 +102,58 @@ class ChatSessionLog(Base):
     __tablename__ = "chat_session_logs"
 
     id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("user_accounts.id"), nullable=True, index=True)
     session_code = Column(String(64), nullable=False, index=True)
     user_question = Column(Text, nullable=False)
+    ai_answer = Column(Text, nullable=True)
     ai_topic = Column(String(200), nullable=True)
     detected_entities_json = Column(Text, nullable=True)
+    follow_ups_json = Column(Text, nullable=True)
     ai_mode = Column(String(80), default="Local Expert Engine")
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+
+class UserAccount(Base):
+    """Tài khoản người dùng cá nhân (Ứng viên / Sinh viên / Chuyên gia / Giảng viên)."""
+    __tablename__ = "user_accounts"
+
+    id = Column(Integer, primary_key=True, index=True)
+    email = Column(String(180), unique=True, nullable=False, index=True)
+    full_name = Column(String(150), nullable=False)
+    password_hash = Column(String(255), nullable=False)
+    role_type = Column(String(80), default="Ứng viên / Sinh viên")
+    target_role = Column(String(180), default="Kỹ sư Phần mềm (Backend/Fullstack)")
+    target_location = Column(String(100), default="TP. Hồ Chí Minh")
+    experience_years = Column(Float, default=1.5)
+    skills_json = Column(Text, default='["Python", "PostgreSQL / SQL", "FastAPI / RESTful API"]')
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+
+class SavedJobBookmark(Base):
+    """Việc làm đã lưu và theo dõi trạng thái ứng tuyển cá nhân."""
+    __tablename__ = "saved_job_bookmarks"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_email = Column(String(180), nullable=False, index=True, default="demo@vnlabor.vn")
+    job_id = Column(Integer, ForeignKey("job_postings.id", ondelete="CASCADE"), nullable=False, index=True)
+    application_status = Column(String(50), default="Đã lưu")  # Đã lưu, Đã nộp CV, Phỏng vấn, Nhận Offer
+    notes = Column(Text, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+
+class CVEvaluationHistory(Base):
+    """Lịch sử chấm điểm hồ sơ CV 4 trụ cột ATS/HR qua từng lần cải thiện."""
+    __tablename__ = "cv_evaluation_history"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_email = Column(String(180), nullable=False, index=True, default="demo@vnlabor.vn")
+    filename = Column(String(255), default="CV_Ung_Vien.pdf")
+    target_role = Column(String(180), nullable=False)
+    target_location = Column(String(100), default="TP. Hồ Chí Minh")
+    total_score = Column(Integer, nullable=False)
+    verdict_label = Column(String(200), nullable=False)
+    recommended_salary_range = Column(String(120), nullable=True)
+    resume_excerpt = Column(Text, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
 
 

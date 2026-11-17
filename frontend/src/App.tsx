@@ -9,11 +9,15 @@ import {
   Activity,
   Settings,
   BookOpen,
-  GraduationCap
+  GraduationCap,
+  User
 } from 'lucide-react';
 
 import { SettingsProvider, useSettings } from './context/SettingsContext';
+import { AuthProvider, useAuth } from './context/AuthContext';
 import { SettingsDrawer } from './components/SettingsDrawer';
+import { AuthModal } from './components/AuthModal';
+import { UserWorkspaceDrawer } from './components/UserWorkspaceDrawer';
 import { ExecutiveDashboardView } from './pages/ExecutiveDashboard';
 import { SkillIntelligenceView } from './pages/SkillIntelligence';
 import { RegionalAnalysisView } from './pages/RegionalAnalysis';
@@ -65,8 +69,11 @@ class ViewErrorBoundary extends React.Component<
 
 function MainLayout() {
   const { t, lang, theme, density, expertMode, setExpertMode } = useSettings();
+  const { user, savedJobs } = useAuth();
   const [activeTab, setActiveTab] = useState('dashboard');
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [authModalOpen, setAuthModalOpen] = useState(false);
+  const [workspaceOpen, setWorkspaceOpen] = useState(false);
 
   const navItems = [
     { id: 'dashboard', label: t('Tổng quan', 'Overview'), icon: BarChart3 },
@@ -153,6 +160,24 @@ function MainLayout() {
             </div>
 
             <button
+              onClick={() => (user || savedJobs.length > 0 ? setWorkspaceOpen(true) : setAuthModalOpen(true))}
+              className="px-2.5 py-1.5 rounded-xl bg-indigo-50/90 dark:bg-slate-900 border border-indigo-200 dark:border-slate-700 text-xs font-bold text-indigo-700 dark:text-amber-300 hover:border-indigo-500 flex items-center gap-1.5 transition shrink-0 whitespace-nowrap"
+              title={t('Tài khoản cá nhân, Việc đã lưu & Lịch sử trò chuyện AI', 'Account, Saved Jobs & AI Chat History')}
+            >
+              <User className="w-3.5 h-3.5 shrink-0" />
+              <span className="hidden md:inline">
+                {user
+                  ? user.full_name.trim().split(/\s+/).slice(-1)[0]
+                  : t('Đăng nhập', 'Sign In')}
+              </span>
+              {savedJobs.length > 0 && (
+                <span className="px-1.5 py-0.5 rounded-full text-[10px] font-mono font-extrabold bg-indigo-600 dark:bg-amber-500 text-white dark:text-slate-950 leading-none">
+                  {savedJobs.length}
+                </span>
+              )}
+            </button>
+
+            <button
               onClick={() => setSettingsOpen(true)}
               className="px-3 py-1.5 rounded-xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-xs font-semibold text-slate-700 dark:text-slate-200 hover:border-indigo-500 flex items-center gap-1.5 transition"
             >
@@ -180,6 +205,13 @@ function MainLayout() {
       </main>
 
       <SettingsDrawer open={settingsOpen} onClose={() => setSettingsOpen(false)} />
+      <AuthModal open={authModalOpen} onClose={() => setAuthModalOpen(false)} />
+      <UserWorkspaceDrawer
+        open={workspaceOpen}
+        onClose={() => setWorkspaceOpen(false)}
+        onOpenAuth={() => setAuthModalOpen(true)}
+        onNavigateTab={setActiveTab}
+      />
 
       {/* Clean Footer */}
       <footer className="border-t border-slate-200/80 dark:border-slate-800/80 bg-white dark:bg-[#0B0F19] py-4 px-4 sm:px-6 mt-8">
@@ -199,7 +231,9 @@ function MainLayout() {
 export function App() {
   return (
     <SettingsProvider>
-      <MainLayout />
+      <AuthProvider>
+        <MainLayout />
+      </AuthProvider>
     </SettingsProvider>
   );
 }

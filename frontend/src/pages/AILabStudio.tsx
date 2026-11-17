@@ -12,7 +12,9 @@ import {
   Bot,
   User,
   Trash2,
-  ArrowRight
+  ArrowRight,
+  History,
+  PlusCircle
 } from 'lucide-react';
 import {
   analyzeVietnameseJD,
@@ -21,9 +23,13 @@ import {
   askAIEconomist,
   evaluateCandidateProfile,
   uploadAndEvaluateCVFile,
-  auditUniversityCurriculum
+  auditUniversityCurriculum,
+  fetchAIChatHistory,
+  deleteAIChatHistoryItem,
+  fetchCVEvaluationHistory
 } from '../services/api';
 import { useSettings } from '../context/SettingsContext';
+import { useAuth } from '../context/AuthContext';
 
 const SAMPLE_JDS = [
   {
@@ -92,7 +98,12 @@ const LOCATION_OPTIONS = [
 
 export const AILabStudioView: React.FC = () => {
   const { t, expertMode } = useSettings();
+  const { user } = useAuth();
   const [subTab, setSubTab] = useState<'nlp' | 'salary-gap' | 'economist' | 'cv-eval' | 'curriculum'>('economist');
+  const [sessionCode, setSessionCode] = useState(() => `sess-${Date.now()}`);
+  const [showChatHistory, setShowChatHistory] = useState(false);
+  const [savedChatLogs, setSavedChatLogs] = useState<any[]>([]);
+  const [cvHistoryLogs, setCvHistoryLogs] = useState<any[]>([]);
   const [showNlpLogs, setShowNlpLogs] = useState(false);
   const [showApiConfig, setShowApiConfig] = useState(false);
   const [geminiApiKey, setGeminiApiKey] = useState('');
@@ -193,7 +204,7 @@ KINH NGHIỆM LÀM VIỆC & DỰ ÁN THỰC TẾ (2.5 năm kinh nghiệm):
     scrollToBottom();
   }, [chatHistory, thinkingStatus]);
 
-  // Handoff from JobExplorer CTA ("Đưa JD này sang Phòng AI để Chấm điểm CV")
+  // Handoff from JobExplorer CTA or restored Chat History from Workspace Drawer
   useEffect(() => {
     const rawCta = sessionStorage.getItem('vn_labor_cta_job');
     if (rawCta) {
@@ -210,7 +221,35 @@ KINH NGHIỆM LÀM VIỆC & DỰ ÁN THỰC TẾ (2.5 năm kinh nghiệm):
         sessionStorage.removeItem('vn_labor_cta_job');
       }
     }
-  }, []);
+    const rawRestore = sessionStorage.getItem('vn_labor_restore_chat');
+    if (rawRestore) {
+      try {
+        const lg = JSON.parse(rawRestore);
+        setSubTab('economist');
+        if (lg.session_code) setSessionCode(lg.session_code);
+        setChatHistory([
+          initialGreeting,
+          { id: `restored-u-${lg.id}`, role: 'user', text: lg.user_question },
+          {
+            id: `restored-a-${lg.id}`,
+            role: 'assistant',
+            text: lg.ai_answer || lg.ai_topic || '',
+            followUps: lg.follow_ups || [],
+          },
+        ]);
+      } catch {
+        // Ignore malformed restore payload
+      } finally {
+        sessionStorage.removeItem('vn_labor_restore_chat');
+      }
+    }
+    fetchAIChatHistory(25)
+      .then((res) => setSavedChatLogs(res.items || []))
+      .catch(() => {});
+    fetchCVEvaluationHistory(user?.email || 'demo@vnlabor.vn')
+      .then((res) => setCvHistoryLogs(res.items || []))
+      .catch(() => {});
+  }, [user?.email]);
 
   const runNlpAnalysis = async () => {
     setNlpLoading(true);
@@ -280,9 +319,12 @@ KINH NGHIỆM LÀM VIỆC & DỰ ÁN THỰC TẾ (2.5 năm kinh nghiệm):
 
     try {
       const [res] = await Promise.all([
-        askAIEconomist(q, prevUserQuestions, geminiApiKey),
+        askAIEconomist(q, prevUserQuestions, geminiApiKey, sessionCode, user?.email),
         new Promise((resolve) => setTimeout(resolve, 400))
       ]);
+      fetchAIChatHistory(25)
+        .then((h) => setSavedChatLogs(h.items || []))
+        .catch(() => {});
 
       setThinkingStatus(null);
 
@@ -382,9 +424,14 @@ Biết dùng một chút Python, SQL và làm web cơ bản. Chăm chỉ, chịu
       const res = await evaluateCandidateProfile({
         raw_text: customText ?? cvText,
         location_hint: customLoc ?? cvLocation,
-        target_role: (customRole ?? cvTargetRole) === 'AUTO' ? undefined : (customRole ?? cvTargetRole)
+        target_role: (customRole ?? cvTargetRole) === 'AUTO' ? undefined : (customRole ?? cvTargetRole),
+        user_email: user?.email,
+        filename: cvUploadedFileInfo?.filename
       });
       setCvEvalResult(res);
+      fetchCVEvaluationHistory(user?.email || 'demo@vnlabor.vn')
+        .then((h) => setCvHistoryLogs(h.items || []))
+        .catch(() => {});
     } catch (e) {
       console.error(e);
     } finally {
@@ -407,7 +454,8 @@ Biết dùng một chút Python, SQL và làm web cơ bản. Chăm chỉ, chịu
         filename: file.name,
         file_base64: base64Data,
         location_hint: cvLocation,
-        target_role: cvTargetRole === 'AUTO' ? undefined : cvTargetRole
+        target_role: cvTargetRole === 'AUTO' ? undefined : cvTargetRole,
+        user_email: user?.email
       });
 
       if (res?.file_parse_result) {
@@ -508,7 +556,7 @@ Biết dùng một chút Python, SQL và làm web cơ bản. Chăm chỉ, chịu
           </h1>
           {expertMode && (
             <span className="px-2 py-0.5 rounded-md text-[10px] font-mono font-bold bg-indigo-50 dark:bg-amber-500/15 text-indigo-700 dark:text-amber-300 border border-indigo-200 dark:border-amber-500/30">
-              ESCO v1.2 • RF R²=0.989 • ATS 4-Pillar
+              ESCO v1.2 • RF R²=0.900 • ATS 4-Pillar
             </span>
           )}
         </div>
@@ -561,8 +609,21 @@ Biết dùng một chút Python, SQL và làm web cơ bản. Chăm chỉ, chịu
               </div>
             </div>
 
-            <div className="flex items-center gap-1.5">
+            <div className="flex flex-wrap items-center gap-1.5">
               <button
+                type="button"
+                onClick={() => setShowChatHistory(!showChatHistory)}
+                className={`px-2.5 py-1.5 rounded-xl text-xs font-semibold border flex items-center gap-1 transition ${
+                  showChatHistory
+                    ? 'bg-indigo-600 text-white border-indigo-600 dark:bg-amber-500 dark:text-slate-950'
+                    : 'text-slate-700 dark:text-slate-200 bg-slate-50 dark:bg-slate-800 border-slate-200 dark:border-slate-700'
+                }`}
+              >
+                <History className="w-3.5 h-3.5" />
+                <span>{t('Lịch sử', 'History')} ({savedChatLogs.length})</span>
+              </button>
+              <button
+                type="button"
                 onClick={() => setShowApiConfig(!showApiConfig)}
                 className="px-2.5 py-1.5 rounded-xl text-xs font-semibold text-indigo-700 dark:text-amber-300 bg-indigo-50 dark:bg-slate-800 border border-indigo-200 dark:border-slate-700 flex items-center gap-1 transition"
               >
@@ -570,14 +631,80 @@ Biết dùng một chút Python, SQL và làm web cơ bản. Chăm chỉ, chịu
                 <span>API Key</span>
               </button>
               <button
-                onClick={() => setChatHistory([initialGreeting])}
-                className="px-2.5 py-1.5 rounded-xl text-xs font-semibold text-slate-500 hover:text-rose-600 hover:bg-slate-100 dark:hover:bg-slate-800 flex items-center gap-1 transition"
+                type="button"
+                onClick={() => {
+                  setSessionCode(`sess-${Date.now()}`);
+                  setChatHistory([initialGreeting]);
+                }}
+                className="px-2.5 py-1.5 rounded-xl text-xs font-semibold text-slate-600 dark:text-slate-300 hover:text-indigo-600 hover:bg-slate-100 dark:hover:bg-slate-800 flex items-center gap-1 transition"
               >
-                <Trash2 className="w-3.5 h-3.5" />
-                <span>{t('Làm mới', 'Reset')}</span>
+                <PlusCircle className="w-3.5 h-3.5" />
+                <span>{t('Cuộc trò chuyện mới', 'New Chat')}</span>
               </button>
             </div>
           </div>
+
+          {showChatHistory && (
+            <div className="p-3.5 rounded-2xl bg-slate-50 dark:bg-slate-900/90 border border-slate-200 dark:border-slate-800 space-y-2 max-h-60 overflow-y-auto">
+              <div className="flex items-center justify-between text-xs font-bold text-slate-700 dark:text-slate-200">
+                <span>{t('Lịch sử các cuộc trò chuyện đã lưu', 'Saved AI Conversations')}</span>
+                <span className="text-[11px] font-normal text-slate-400">
+                  {t('Nhấp để mở lại nội dung câu hỏi & câu trả lời', 'Click to restore conversation')}
+                </span>
+              </div>
+              {savedChatLogs.length === 0 ? (
+                <p className="text-xs text-slate-400 py-2">
+                  {t('Chưa có lịch sử trò chuyện nào.', 'No saved conversations yet.')}
+                </p>
+              ) : (
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                  {savedChatLogs.map((lg) => (
+                    <div
+                      key={lg.id}
+                      className="p-2.5 rounded-xl bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 flex items-start justify-between gap-2"
+                    >
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setSessionCode(lg.session_code || `sess-${lg.id}`);
+                          setChatHistory([
+                            initialGreeting,
+                            { id: `hist-u-${lg.id}`, role: 'user', text: lg.user_question },
+                            {
+                              id: `hist-a-${lg.id}`,
+                              role: 'assistant',
+                              text: lg.ai_answer || lg.ai_topic || '',
+                              followUps: lg.follow_ups || [],
+                            },
+                          ]);
+                          setShowChatHistory(false);
+                        }}
+                        className="text-left min-w-0 flex-1"
+                      >
+                        <div className="text-xs font-bold text-indigo-700 dark:text-amber-300 truncate hover:underline">
+                          {lg.user_question}
+                        </div>
+                        <div className="text-[10.5px] text-slate-400 truncate mt-0.5">
+                          {lg.ai_topic || lg.ai_mode}
+                        </div>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={async () => {
+                          await deleteAIChatHistoryItem(lg.id).catch(() => {});
+                          setSavedChatLogs((prev) => prev.filter((item) => item.id !== lg.id));
+                        }}
+                        className="p-1 text-slate-400 hover:text-rose-600 shrink-0"
+                        title={t('Xóa mục này', 'Delete item')}
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
 
           {showApiConfig && (
             <div className="p-3 rounded-xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 flex flex-col sm:flex-row items-center justify-between gap-2 text-xs">
@@ -1151,6 +1278,36 @@ Biết dùng một chút Python, SQL và làm web cơ bản. Chăm chỉ, chịu
                 ))}
               </div>
             </div>
+
+            {cvHistoryLogs.length > 0 && (
+              <div className="p-3 rounded-xl bg-slate-50 dark:bg-slate-900/70 border border-slate-200 dark:border-slate-800 space-y-1.5">
+                <div className="text-[11px] font-bold text-slate-600 dark:text-slate-300 flex items-center gap-1.5">
+                  <History className="w-3.5 h-3.5 text-indigo-600 dark:text-amber-400" />
+                  <span>{t('Lịch sử Điểm Chấm CV gần đây', 'Recent CV Score History')}</span>
+                </div>
+                <div className="grid grid-cols-1 gap-1.5">
+                  {cvHistoryLogs.slice(0, 3).map((item) => (
+                    <div
+                      key={item.id}
+                      className="flex items-center justify-between gap-2 text-[11px] px-2.5 py-1.5 rounded-lg bg-white dark:bg-slate-950 border border-slate-200/80 dark:border-slate-800"
+                    >
+                      <span className="truncate font-semibold text-slate-700 dark:text-slate-200">
+                        {item.filename} ({item.target_location})
+                      </span>
+                      <span
+                        className={`font-mono font-extrabold shrink-0 ${
+                          item.total_score >= 80
+                            ? 'text-emerald-600 dark:text-emerald-400'
+                            : 'text-amber-600 dark:text-amber-400'
+                        }`}
+                      >
+                        {item.total_score}/100
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
 
             {/* Target Role & Location Selectors */}
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">

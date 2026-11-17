@@ -6,9 +6,12 @@ Tham chiếu số liệu:
 - Tổ chức Lao động Quốc tế (ILO) - Báo cáo GenAI và việc làm tại Việt Nam
 - Khung phân loại Kỹ năng Châu Âu ESCO & Báo cáo TopCV / JobsGO 2025-2026
 """
+import hashlib
+import json
 import random
 import numpy as np
 from datetime import date, datetime, timedelta
+from sqlalchemy import text
 from sqlalchemy.orm import Session
 from .models import (
     Industry,
@@ -19,6 +22,10 @@ from .models import (
     JobPosting,
     JobSkill,
     ETLPipelineRun,
+    ChatSessionLog,
+    UserAccount,
+    SavedJobBookmark,
+    CVEvaluationHistory,
 )
 
 INDUSTRIES_DATA = [
@@ -447,10 +454,133 @@ def _ensure_3nf_companies_and_snapshots(db: Session):
 
 
 
+def _hash_password_pbkdf2(password: str, salt: str = "vnlabor_2026_salt") -> str:
+    digest = hashlib.pbkdf2_hmac("sha256", password.encode("utf-8"), salt.encode("utf-8"), 120000).hex()
+    return f"pbkdf2_sha256${salt}${digest}"
+
+
+def _ensure_new_columns_and_seed_user_data(db: Session):
+    """Đảm bảo tương thích schema mới và khởi tạo tài khoản mẫu + lịch sử sử dụng."""
+    alter_stmts = [
+        "ALTER TABLE chat_session_logs ADD COLUMN user_id INTEGER",
+        "ALTER TABLE chat_session_logs ADD COLUMN ai_answer TEXT",
+        "ALTER TABLE chat_session_logs ADD COLUMN follow_ups_json TEXT",
+    ]
+    for stmt in alter_stmts:
+        try:
+            db.execute(text(stmt))
+            db.commit()
+        except Exception:
+            db.rollback()
+
+    demo_user = db.query(UserAccount).filter(UserAccount.email == "demo@vnlabor.vn").first()
+    if not demo_user:
+        demo_user = UserAccount(
+            email="demo@vnlabor.vn",
+            full_name="Nguyễn Minh Quân",
+            password_hash=_hash_password_pbkdf2("Demo@2026"),
+            role_type="Ứng viên / Kỹ sư Phần mềm & GIS",
+            target_role="Kỹ sư Phần mềm (Backend/Fullstack)",
+            target_location="TP. Hồ Chí Minh",
+            experience_years=2.5,
+            skills_json=json.dumps(
+                ["Python", "FastAPI / RESTful API", "PostgreSQL / SQL", "React / TypeScript", "ArcGIS / QGIS & Spatial Analysis"],
+                ensure_ascii=False,
+            ),
+        )
+        db.add(demo_user)
+        db.commit()
+        db.refresh(demo_user)
+
+    if db.query(ChatSessionLog).count() == 0:
+        sample_chats = [
+            (
+                "session-demo-1",
+                "Mức lương Kỹ sư Python kết hợp WebGIS 2 năm kinh nghiệm tại TP.HCM hiện nay khoảng bao nhiêu?",
+                "Thu nhập của mảng Kỹ sư Phần mềm & WebGIS tại TP. Hồ Chí Minh (2 năm kinh nghiệm) hiện khởi điểm từ khoảng 14.5 triệu, phổ biến ở mức 19.8 – 26.5 triệu VNĐ/tháng và vượt mốc 35 triệu ở cấp chuyên gia.\n\nĐể phát triển vững ở mảng này, bạn nên tập trung PostgreSQL / PostGIS, FastAPI + Docker và trực quan hóa dữ liệu trên Power BI.",
+                "Tư vấn: Python & WebGIS tại TP. Hồ Chí Minh",
+                ["Những doanh nghiệp nào đang tuyển nhiều ở mảng WebGIS?", "So sánh chi phí sống giữa TP.HCM và Đà Nẵng?"],
+                3,
+            ),
+            (
+                "session-demo-2",
+                "So sánh cơ hội việc làm và mức tiết kiệm ròng giữa TP. Hồ Chí Minh và Đà Nẵng?",
+                "Tại TP. Hồ Chí Minh số lượng tin tuyển dụng lớn nhất cả nước (chiếm ~35.7% thị phần) với mặt bằng lương danh nghĩa cao hơn 12–18%, nhưng chỉ số giá sinh hoạt SCOLI ở mức 1.18x.\n\nTại Đà Nẵng tuy lương trung bình thấp hơn một chút nhưng chỉ số SCOLI chỉ 0.96x nên với cùng mức lương 25 triệu Gross, người lao động tại Đà Nẵng dư thêm khoảng 2.3 triệu VNĐ mỗi tháng so với TP.HCM.",
+                "So sánh SCOLI: TP. Hồ Chí Minh vs Đà Nẵng",
+                ["Tính lương thực nhận Gross 25 triệu tại Đà Nẵng?", "Đà Nẵng đang tuyển mạnh những kỹ năng ESCO nào?"],
+                2,
+            ),
+            (
+                "session-demo-3",
+                "Ngành Tin học Môi trường, GIS & ESG cần học thêm kỹ năng gì để tăng lương?",
+                "Ngoài nền tảng ArcGIS / QGIS và Viễn thám, nhóm kỹ năng giúp tăng lương rõ rệt nhất hiện nay là Carbon Accounting & ESG Reporting (+23.5% thưởng lương), Python tự động hóa ETL (+18% thưởng lương) và Quan trắc Môi trường IoT thời gian thực.",
+                "Định hướng kỹ năng: Môi trường, GIS & ESG",
+                ["Kiểm toán đề cương ngành Tin học Môi trường ở đâu?", "Xem các tin tuyển dụng ESG đang mở?"],
+                1,
+            ),
+        ]
+        for s_code, q, a, topic, fups, days_ago in sample_chats:
+            db.add(ChatSessionLog(
+                user_id=demo_user.id,
+                session_code=s_code,
+                user_question=q,
+                ai_answer=a,
+                ai_topic=topic,
+                follow_ups_json=json.dumps(fups, ensure_ascii=False),
+                ai_mode="Hệ thống Phân tích Chuyên gia Nội bộ",
+                created_at=datetime.utcnow() - timedelta(days=days_ago, hours=2),
+            ))
+        db.commit()
+
+    if db.query(SavedJobBookmark).count() == 0:
+        sample_jobs = db.query(JobPosting).order_by(JobPosting.salary_avg_vnd.desc()).limit(3).all()
+        statuses = ["Phỏng vấn", "Đã nộp CV", "Đã lưu"]
+        notes_list = [
+            "Đã hoàn thiện vòng test FastAPI + PostGIS, chờ phỏng vấn kỹ thuật.",
+            "Đã nộp CV bản mới chấm đạt 98/100 điểm ATS.",
+            "Cần ôn lại thêm phần Docker & Kubernetes trước khi nộp hồ sơ.",
+        ]
+        for idx, j in enumerate(sample_jobs):
+            db.add(SavedJobBookmark(
+                user_email=demo_user.email,
+                job_id=j.id,
+                application_status=statuses[idx % len(statuses)],
+                notes=notes_list[idx % len(notes_list)],
+                created_at=datetime.utcnow() - timedelta(days=idx + 1),
+            ))
+        db.commit()
+
+    if db.query(CVEvaluationHistory).count() == 0:
+        db.add(CVEvaluationHistory(
+            user_email=demo_user.email,
+            filename="CV_Nguyen_Minh_Quan_v1.docx",
+            target_role="Kỹ sư Phần mềm (Backend/Fullstack)",
+            target_location="TP. Hồ Chí Minh",
+            total_score=74,
+            verdict_label="Khá — Đạt chuẩn cơ bản, cần bổ sung số liệu định lượng",
+            recommended_salary_range="18.0 – 25.0 triệu VNĐ/tháng",
+            resume_excerpt="Nguyễn Minh Quân | Sinh viên năm cuối CNTT | Biết Python, SQL, HTML/CSS...",
+            created_at=datetime.utcnow() - timedelta(days=5),
+        ))
+        db.add(CVEvaluationHistory(
+            user_email=demo_user.email,
+            filename="CV_Nguyen_Minh_Quan_Backend_GIS.pdf",
+            target_role="Kỹ sư Phần mềm (Backend/Fullstack)",
+            target_location="TP. Hồ Chí Minh",
+            total_score=98,
+            verdict_label="Xuất sắc — Sẵn sàng vượt vòng lọc CV & Phỏng vấn",
+            recommended_salary_range="24.5 – 33.8 triệu VNĐ/tháng",
+            resume_excerpt="Nguyễn Minh Quân | 2.5 năm kinh nghiệm FastAPI, PostgreSQL/PostGIS, React/TS, ArcGIS/QGIS, giảm 38% độ trễ truy vấn...",
+            created_at=datetime.utcnow() - timedelta(days=1),
+        ))
+        db.commit()
+
+
 def seed_database_if_empty(db: Session):
     existing_count = db.query(JobPosting).count()
     if existing_count > 0:
         _ensure_3nf_companies_and_snapshots(db)
+        _ensure_new_columns_and_seed_user_data(db)
         return
 
     rng = random.Random(20261029)
@@ -599,5 +729,6 @@ def seed_database_if_empty(db: Session):
 
     db.commit()
     _ensure_3nf_companies_and_snapshots(db)
+    _ensure_new_columns_and_seed_user_data(db)
 
 

@@ -91,7 +91,9 @@ export async function analyzeSkillGap(payload: {
 export async function askAIEconomist(
   question: string,
   history: string[] = [],
-  geminiApiKey?: string
+  geminiApiKey?: string,
+  sessionCode = 'default-session',
+  userEmail?: string
 ) {
   const res = await fetch(`${API_BASE}/api/v1/ai/chat`, {
     method: 'POST',
@@ -100,6 +102,8 @@ export async function askAIEconomist(
       question,
       history,
       gemini_api_key: geminiApiKey ? geminiApiKey.trim() : undefined,
+      session_code: sessionCode,
+      user_email: userEmail,
     }),
   });
   if (!res.ok) throw new Error('Lỗi khi kết nối Trợ lý AI');
@@ -110,6 +114,8 @@ export async function evaluateCandidateProfile(payload: {
   raw_text: string;
   location_hint?: string;
   target_role?: string;
+  user_email?: string;
+  filename?: string;
 }) {
   const res = await fetch(`${API_BASE}/api/v1/ai/evaluate-profile`, {
     method: 'POST',
@@ -125,6 +131,7 @@ export async function uploadAndEvaluateCVFile(payload: {
   file_base64: string;
   location_hint?: string;
   target_role?: string;
+  user_email?: string;
 }) {
   const res = await fetch(`${API_BASE}/api/v1/ai/parse-cv-file`, {
     method: 'POST',
@@ -179,6 +186,125 @@ export async function triggerETLPipeline(payload: {
     body: JSON.stringify(payload),
   });
   if (!res.ok) throw new Error('Không thể kích hoạt luồng thu thập dữ liệu');
+  return res.json();
+}
+
+// === Auth, Profile, Saved Jobs & History APIs ===
+
+export async function registerUser(payload: {
+  email: string;
+  full_name: string;
+  password: string;
+  role_type?: string;
+  target_role?: string;
+  target_location?: string;
+  experience_years?: number;
+  skills?: string[];
+}) {
+  const res = await fetch(`${API_BASE}/api/v1/auth/register`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.detail || 'Đăng ký tài khoản thất bại');
+  return data;
+}
+
+export async function loginUser(payload: { email: string; password: string }) {
+  const res = await fetch(`${API_BASE}/api/v1/auth/login`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.detail || 'Email hoặc mật khẩu chưa đúng');
+  return data;
+}
+
+export async function fetchUserProfile(email: string) {
+  const res = await fetch(`${API_BASE}/api/v1/auth/me?email=${encodeURIComponent(email)}`);
+  if (!res.ok) throw new Error('Không thể tải thông tin hồ sơ người dùng');
+  return res.json();
+}
+
+export async function updateUserProfile(
+  email: string,
+  payload: {
+    full_name?: string;
+    role_type?: string;
+    target_role?: string;
+    target_location?: string;
+    experience_years?: number;
+    skills?: string[];
+  }
+) {
+  const res = await fetch(`${API_BASE}/api/v1/auth/profile?email=${encodeURIComponent(email)}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+  if (!res.ok) throw new Error('Không thể cập nhật thông tin tài khoản');
+  return res.json();
+}
+
+export async function fetchSavedJobs(email: string) {
+  const res = await fetch(`${API_BASE}/api/v1/auth/saved-jobs?email=${encodeURIComponent(email)}`);
+  if (!res.ok) throw new Error('Không thể tải danh sách việc làm đã lưu');
+  return res.json();
+}
+
+export async function toggleSavedJob(payload: {
+  user_email: string;
+  job_id: number;
+  application_status?: string;
+  notes?: string;
+}) {
+  const res = await fetch(`${API_BASE}/api/v1/auth/saved-jobs`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+  if (!res.ok) throw new Error('Không thể lưu trạng thái việc làm');
+  return res.json();
+}
+
+export async function removeSavedJob(jobId: number, email: string) {
+  const res = await fetch(
+    `${API_BASE}/api/v1/auth/saved-jobs/${jobId}?email=${encodeURIComponent(email)}`,
+    { method: 'DELETE' }
+  );
+  if (!res.ok) throw new Error('Không thể xóa việc làm đã lưu');
+  return res.json();
+}
+
+export async function fetchAIChatHistory(limit = 30) {
+  const res = await fetch(`${API_BASE}/api/v1/ai/chat-history?limit=${limit}`);
+  if (!res.ok) throw new Error('Không thể tải lịch sử trò chuyện AI');
+  return res.json();
+}
+
+export async function deleteAIChatHistoryItem(logId: number) {
+  const res = await fetch(`${API_BASE}/api/v1/ai/chat-history/${logId}`, {
+    method: 'DELETE',
+  });
+  if (!res.ok) throw new Error('Không thể xóa mục lịch sử trò chuyện');
+  return res.json();
+}
+
+export async function clearAIChatHistory() {
+  const res = await fetch(`${API_BASE}/api/v1/ai/chat-history`, {
+    method: 'DELETE',
+  });
+  if (!res.ok) throw new Error('Không thể làm sạch lịch sử trò chuyện');
+  return res.json();
+}
+
+export async function fetchCVEvaluationHistory(email = 'demo@vnlabor.vn') {
+  const res = await fetch(
+    `${API_BASE}/api/v1/ai/cv-history?email=${encodeURIComponent(email)}`
+  );
+  if (!res.ok) throw new Error('Không thể tải lịch sử đánh giá CV');
   return res.json();
 }
 

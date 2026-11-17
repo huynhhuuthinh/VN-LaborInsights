@@ -10,6 +10,8 @@ class JDAnalyzeRequest(BaseModel):
     raw_text: str = Field(..., min_length=5, max_length=25000, description="Nội dung mô tả công việc (JD) hoặc CV ứng viên")
     location_hint: Optional[str] = Field(default="TP. Hồ Chí Minh", max_length=120)
     target_role: Optional[str] = Field(default=None, max_length=200, description="Vị trí ứng tuyển mục tiêu (tùy chọn, mặc định tự nhận diện)")
+    user_email: Optional[str] = Field(default=None, max_length=180)
+    filename: Optional[str] = Field(default=None, max_length=255)
 
 
 class CVFileParseRequest(BaseModel):
@@ -17,6 +19,7 @@ class CVFileParseRequest(BaseModel):
     file_base64: str = Field(..., description="Nội dung file mã hóa Base64")
     location_hint: Optional[str] = Field(default="TP. Hồ Chí Minh", max_length=120)
     target_role: Optional[str] = Field(default=None, max_length=200)
+    user_email: Optional[str] = Field(default=None, max_length=180)
 
 
 class SalaryPredictRequest(BaseModel):
@@ -41,6 +44,8 @@ class AIChatRequest(BaseModel):
     history: Optional[List[str]] = Field(default_factory=list, max_length=20, description="Lịch sử câu hỏi trong phiên trò chuyện")
     gemini_api_key: Optional[str] = Field(default=None, max_length=200, description="Khóa Google Gemini API miễn phí (tùy chọn)")
     context_filter: Optional[Dict[str, Any]] = None
+    session_code: Optional[str] = Field(default="default-session", max_length=64)
+    user_email: Optional[str] = Field(default=None, max_length=180)
 
 
 class ETLTriggerRequest(BaseModel):
@@ -59,3 +64,35 @@ class GrossToNetRequest(BaseModel):
     gross_salary_vnd: float = Field(default=22.0, ge=5.0, le=250.0, description="Mức lương Gross (triệu VNĐ/tháng)")
     dependents: int = Field(default=0, ge=0, le=10, description="Số người phụ thuộc giảm trừ gia cảnh")
     location_code: str = Field(default="VN-SG", max_length=30)
+
+
+class UserRegisterRequest(BaseModel):
+    email: str = Field(..., min_length=5, max_length=180)
+    full_name: str = Field(..., min_length=2, max_length=150)
+    password: str = Field(..., min_length=6, max_length=120)
+    role_type: Optional[str] = Field(default="Ứng viên / Sinh viên", max_length=80)
+    target_role: Optional[str] = Field(default="Kỹ sư Phần mềm (Backend/Fullstack)", max_length=180)
+    target_location: Optional[str] = Field(default="TP. Hồ Chí Minh", max_length=100)
+    experience_years: float = Field(default=1.5, ge=0.0, le=40.0)
+    skills: List[str] = Field(default_factory=lambda: ["Python", "PostgreSQL / SQL", "FastAPI / RESTful API"], max_length=20)
+
+
+class UserLoginRequest(BaseModel):
+    email: str = Field(..., min_length=4, max_length=180)
+    password: str = Field(..., min_length=1, max_length=120)
+
+
+class UserProfileUpdateRequest(BaseModel):
+    full_name: Optional[str] = Field(default=None, min_length=2, max_length=150)
+    role_type: Optional[str] = Field(default=None, max_length=80)
+    target_role: Optional[str] = Field(default=None, max_length=180)
+    target_location: Optional[str] = Field(default=None, max_length=100)
+    experience_years: Optional[float] = Field(default=None, ge=0.0, le=40.0)
+    skills: Optional[List[str]] = Field(default=None, max_length=25)
+
+
+class SavedJobRequest(BaseModel):
+    user_email: str = Field(default="demo@vnlabor.vn", max_length=180)
+    job_id: int = Field(..., ge=1)
+    application_status: Optional[str] = Field(default=None, max_length=50)
+    notes: Optional[str] = Field(default=None, max_length=1000)

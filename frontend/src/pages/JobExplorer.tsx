@@ -6,10 +6,13 @@ import {
   ChevronDown,
   ChevronUp,
   Sparkles,
-  MapPin
+  MapPin,
+  Bookmark,
+  Download
 } from 'lucide-react';
 import { searchJobs, fetchFilterOptions } from '../services/api';
 import { useSettings } from '../context/SettingsContext';
+import { useAuth } from '../context/AuthContext';
 
 const FALLBACK_FILTERS = {
   industries: [
@@ -76,7 +79,9 @@ export const JobExplorerView: React.FC<{ onNavigateTab?: (tab: string) => void }
   onNavigateTab
 }) => {
   const { t, expertMode } = useSettings();
+  const { savedJobIds, savedJobs, toggleBookmark } = useAuth();
   const [filtersMeta, setFiltersMeta] = useState<any>(FALLBACK_FILTERS);
+  const [onlySaved, setOnlySaved] = useState(false);
 
   const [queryText, setQueryText] = useState('');
   const [industryCode, setIndustryCode] = useState('ALL');
@@ -157,11 +162,58 @@ export const JobExplorerView: React.FC<{ onNavigateTab?: (tab: string) => void }
     }
   };
 
+  const displayedJobs = onlySaved ? savedJobs : result.items || [];
+
+  const exportJobsCsv = () => {
+    const rows = displayedJobs;
+    if (!rows.length) return;
+    const headers = [
+      'Job Code',
+      'Title',
+      'Company',
+      'Location',
+      'Industry',
+      'Experience',
+      'Mode',
+      'Salary Min (M)',
+      'Salary Max (M)',
+      'Skills'
+    ];
+    const csvLines = [headers.join(',')];
+    for (const j of rows) {
+      const skList = (j.skills || []).map((s: any) => s.name || s).join('; ');
+      const cols = [
+        j.job_code || j.job_id || j.id,
+        j.title,
+        j.company_name,
+        j.location_name,
+        j.industry_name,
+        j.experience_level,
+        j.work_mode,
+        j.salary_min_vnd,
+        j.salary_max_vnd,
+        skList
+      ].map((val) => `"${String(val ?? '').replace(/"/g, '""')}"`);
+      csvLines.push(cols.join(','));
+    }
+    const blob = new Blob(['\uFEFF' + csvLines.join('\n')], {
+      type: 'text/csv;charset=utf-8;'
+    });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = onlySaved ? 'vn_labor_saved_jobs.csv' : 'vn_labor_jobs_export.csv';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  };
+
   return (
     <div className="space-y-5">
       {/* Compact Search & Filter Bar (ITviec / LinkedIn style) */}
       <div className="bg-white dark:bg-[#0D1322] border border-slate-200/90 dark:border-slate-800/80 rounded-2xl p-4 shadow-2xs space-y-3">
-        <div className="flex items-center justify-between gap-2">
+        <div className="flex flex-wrap items-center justify-between gap-2">
           <div>
             <h1 className="text-lg font-extrabold text-slate-900 dark:text-white">
               {expertMode
@@ -171,15 +223,41 @@ export const JobExplorerView: React.FC<{ onNavigateTab?: (tab: string) => void }
             {!expertMode && (
               <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
                 {t(
-                  'Chọn một công việc bên trái để xem kỹ năng nhà tuyển dụng cần và thử chấm điểm CV với AI.',
-                  'Pick a job on the left to inspect required skills and test your CV match with AI.'
+                  'Chọn một công việc bên trái để xem kỹ năng nhà tuyển dụng cần, lưu việc yêu thích hoặc thử chấm điểm CV với AI.',
+                  'Pick a job on the left to inspect required skills, bookmark roles, or score your CV match with AI.'
                 )}
               </p>
             )}
           </div>
-          <span className="text-xs font-semibold text-slate-500 dark:text-slate-400">
-            <strong className="text-indigo-600 dark:text-amber-400 font-mono">{result.total}</strong> {t('việc làm', 'jobs')}
-          </span>
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              onClick={() => setOnlySaved(!onlySaved)}
+              className={`px-3 py-1.5 rounded-xl text-xs font-bold flex items-center gap-1.5 border transition ${
+                onlySaved
+                  ? 'bg-indigo-600 text-white border-indigo-600 dark:bg-amber-500 dark:text-slate-950 dark:border-amber-500'
+                  : 'bg-slate-50 dark:bg-slate-900 text-slate-700 dark:text-slate-200 border-slate-200 dark:border-slate-700 hover:border-indigo-500'
+              }`}
+            >
+              <Bookmark className="w-3.5 h-3.5" />
+              <span>{t('Đã lưu', 'Saved')} ({savedJobIds.length})</span>
+            </button>
+            <button
+              type="button"
+              onClick={exportJobsCsv}
+              className="px-3 py-1.5 rounded-xl text-xs font-bold flex items-center gap-1.5 border bg-slate-50 dark:bg-slate-900 text-slate-700 dark:text-slate-200 border-slate-200 dark:border-slate-700 hover:border-emerald-500 hover:text-emerald-600 transition"
+              title={t('Xuất danh sách hiện tại ra file CSV/Excel', 'Export current list to CSV')}
+            >
+              <Download className="w-3.5 h-3.5" />
+              <span>{t('Xuất CSV', 'Export CSV')}</span>
+            </button>
+            <span className="text-xs font-semibold text-slate-500 dark:text-slate-400 pl-1">
+              <strong className="text-indigo-600 dark:text-amber-400 font-mono">
+                {onlySaved ? displayedJobs.length : result.total}
+              </strong>{' '}
+              {t('việc làm', 'jobs')}
+            </span>
+          </div>
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-7 gap-2.5">
@@ -267,30 +345,36 @@ export const JobExplorerView: React.FC<{ onNavigateTab?: (tab: string) => void }
       <div className="grid grid-cols-1 xl:grid-cols-12 gap-5">
         {/* Left Job List */}
         <div className="xl:col-span-7 space-y-2.5">
-          {(!result.items || result.items.length === 0) && (
+          {displayedJobs.length === 0 && (
             <div className="bg-white dark:bg-[#0D1322] border border-slate-200/90 dark:border-slate-800/80 rounded-2xl p-8 text-center space-y-3 shadow-2xs">
               <div className="text-sm font-bold text-slate-900 dark:text-white">
-                {t('Không tìm thấy việc làm phù hợp với bộ lọc hiện tại', 'No matching jobs found for the current filters')}
+                {onlySaved
+                  ? t('Bạn chưa lưu công việc nào', 'No bookmarked jobs yet')
+                  : t('Không tìm thấy việc làm phù hợp với bộ lọc hiện tại', 'No matching jobs found for the current filters')}
               </div>
               <p className="text-xs text-slate-500 dark:text-slate-400">
-                {t('Hãy thử nới lỏng từ khóa, đổi tỉnh/thành hoặc xóa bộ lọc để xem toàn bộ thị trường.', 'Try broadening your keyword, changing location, or resetting all filters.')}
+                {onlySaved
+                  ? t('Bấm nút Lưu trên từng tin tuyển dụng để theo dõi tại đây.', 'Click the Bookmark button on any job card to save it here.')
+                  : t('Hãy thử nới lỏng từ khóa, đổi tỉnh/thành hoặc xóa bộ lọc để xem toàn bộ thị trường.', 'Try broadening your keyword, changing location, or resetting all filters.')}
               </p>
               <button
                 type="button"
-                onClick={resetFilters}
+                onClick={() => (onlySaved ? setOnlySaved(false) : resetFilters())}
                 className="px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 dark:bg-amber-500 text-white dark:text-slate-950 text-xs font-bold transition"
               >
-                {t('Xóa bộ lọc', 'Reset Filters')}
+                {onlySaved ? t('Xem tất cả việc làm', 'Browse All Jobs') : t('Xóa bộ lọc', 'Reset Filters')}
               </button>
             </div>
           )}
-          {result.items?.map((job: any) => {
-            const isSelected = selectedJob?.id === job.id;
+          {displayedJobs.map((job: any) => {
+            const jid = Number(job.job_id || job.id);
+            const isSelected = Number(selectedJob?.job_id || selectedJob?.id) === jid;
+            const isBookmarked = savedJobIds.includes(jid);
             const visibleSkills = job.skills?.slice(0, 4) || [];
             const extraSkills = Math.max(0, (job.skills?.length || 0) - 4);
             return (
               <div
-                key={job.id}
+                key={jid}
                 onClick={() => setSelectedJob(job)}
                 className={`cursor-pointer rounded-2xl p-4 border transition ${
                   isSelected
@@ -308,13 +392,30 @@ export const JobExplorerView: React.FC<{ onNavigateTab?: (tab: string) => void }
                     </p>
                   </div>
 
-                  <div className="text-right shrink-0">
-                    <div className="text-sm font-mono font-extrabold text-indigo-600 dark:text-amber-400">
-                      {job.salary_min_vnd}–{job.salary_max_vnd}tr
+                  <div className="flex items-start gap-2 shrink-0">
+                    <div className="text-right">
+                      <div className="text-sm font-mono font-extrabold text-indigo-600 dark:text-amber-400">
+                        {job.salary_min_vnd}–{job.salary_max_vnd}tr
+                      </div>
+                      <div className="text-[11px] text-slate-400">
+                        {job.experience_level}
+                      </div>
                     </div>
-                    <div className="text-[11px] text-slate-400">
-                      {job.experience_level}
-                    </div>
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        toggleBookmark(job);
+                      }}
+                      className={`p-1.5 rounded-lg border transition ${
+                        isBookmarked
+                          ? 'bg-indigo-50 dark:bg-amber-500/20 border-indigo-300 dark:border-amber-500 text-indigo-600 dark:text-amber-400'
+                          : 'border-slate-200 dark:border-slate-700 text-slate-400 hover:text-indigo-600'
+                      }`}
+                      title={isBookmarked ? t('Bỏ lưu việc làm', 'Remove Bookmark') : t('Lưu việc làm này', 'Bookmark Job')}
+                    >
+                      <Bookmark className={`w-3.5 h-3.5 ${isBookmarked ? 'fill-current' : ''}`} />
+                    </button>
                   </div>
                 </div>
 
@@ -378,12 +479,32 @@ export const JobExplorerView: React.FC<{ onNavigateTab?: (tab: string) => void }
                   <span>{selectedJob.source_platform}</span>
                   <span>{selectedJob.posted_date}</span>
                 </div>
-                <h3 className="text-base font-bold text-slate-900 dark:text-white mt-1">
-                  {selectedJob.title}
-                </h3>
-                <p className="text-xs text-slate-500 mt-0.5">
-                  {selectedJob.company_name} • {selectedJob.location_name}
-                </p>
+                <div className="flex items-start justify-between gap-2 mt-1">
+                  <div>
+                    <h3 className="text-base font-bold text-slate-900 dark:text-white">
+                      {selectedJob.title}
+                    </h3>
+                    <p className="text-xs text-slate-500 mt-0.5">
+                      {selectedJob.company_name} • {selectedJob.location_name}
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => toggleBookmark(selectedJob)}
+                    className={`px-2.5 py-1.5 rounded-xl border text-xs font-bold flex items-center gap-1.5 shrink-0 transition ${
+                      savedJobIds.includes(Number(selectedJob.job_id || selectedJob.id))
+                        ? 'bg-indigo-600 dark:bg-amber-500 border-indigo-600 dark:border-amber-500 text-white dark:text-slate-950'
+                        : 'bg-slate-50 dark:bg-slate-900 border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200'
+                    }`}
+                  >
+                    <Bookmark className={`w-3.5 h-3.5 ${savedJobIds.includes(Number(selectedJob.job_id || selectedJob.id)) ? 'fill-current' : ''}`} />
+                    <span>
+                      {savedJobIds.includes(Number(selectedJob.job_id || selectedJob.id))
+                        ? t('Đã lưu', 'Saved')
+                        : t('Lưu tin', 'Save')}
+                    </span>
+                  </button>
+                </div>
               </div>
 
               <div className="grid grid-cols-2 gap-2.5 text-xs">

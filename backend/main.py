@@ -11,7 +11,7 @@ from fastapi.responses import JSONResponse
 from app.database import engine, SessionLocal, Base, ACTIVE_DB_ENGINE
 from app.seed_data import seed_database_if_empty
 from app.services.ml_predictor import ml_engine
-from app.routers import analytics, jobs, ai_tools, etl
+from app.routers import analytics, jobs, ai_tools, etl, auth
 
 
 @asynccontextmanager
@@ -40,7 +40,7 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
     allow_credentials=False,
-    allow_methods=["GET", "POST", "OPTIONS"],
+    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
     allow_headers=["*"],
 )
 
@@ -70,6 +70,7 @@ app.include_router(analytics.router)
 app.include_router(jobs.router)
 app.include_router(ai_tools.router)
 app.include_router(etl.router)
+app.include_router(auth.router)
 
 
 @app.get("/")
